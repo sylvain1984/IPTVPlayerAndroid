@@ -1,0 +1,5 @@
+-keep class com.iptv.player.data.** { *; }
+-keepattributes Signature
+-keepattributes *Annotation*
+-dontwarn okhttp3.**
+-dontwarn okio.**

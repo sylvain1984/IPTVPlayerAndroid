@@ -1,0 +1,30 @@
+# macOS
+.DS_Store
+
+# Android / Gradle
+*.iml
+.gradle/
+local.properties
+.idea/
+.idea/caches/
+.idea/libraries/
+.idea/modules.xml
+.idea/workspace.xml
+.idea/navEditor.xml
+.idea/assetWizardSettings.xml
+build/
+app/build/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Keystore (sensitive - do not commit)
+*.jks
+*.keystore
+
+# APK / AAB
+*.apk
+*.aab
+
+# ProGuard mapping
+*.map
