@@ -96,6 +96,6 @@ object M3UParser {
 
     private fun isValidUrl(s: String): Boolean {
         return s.startsWith("http://") || s.startsWith("https://")
-                || s.startsWith("rtmp://") || s.startsWith("rtsp://")
+                || s.startsWith("rtsp://")
     }
 }

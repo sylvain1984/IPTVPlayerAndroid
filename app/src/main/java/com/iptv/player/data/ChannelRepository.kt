@@ -176,12 +176,13 @@ class ChannelRepository(private val context: Context) {
         refresh(scope)
     }
 
-    fun toggleFavorite(channel: Channel) {
+    suspend fun toggleFavorite(channel: Channel) {
         val list = _channels.value.toMutableList()
         val idx = list.indexOfFirst { it.id == channel.id }
         if (idx >= 0) {
             list[idx] = list[idx].copy(isFavorite = !list[idx].isFavorite)
             _channels.value = list
+            save()
         }
     }
 

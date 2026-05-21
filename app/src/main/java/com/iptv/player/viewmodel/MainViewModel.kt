@@ -183,7 +183,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (on) { _showOnlyRecent.value = false; _selectedGroup.value = null; _showOnlyFavorites.value = false }
     }
 
-    fun toggleFavorite(channel: Channel)  { repository.toggleFavorite(channel) }
+    fun toggleFavorite(channel: Channel)  {
+        viewModelScope.launch { repository.toggleFavorite(channel) }
+    }
+
+    fun trySwitchToNextSource(): Boolean {
+        val channel = selectedChannel.value ?: return false
+        val currentUrl = activeSource.value?.url ?: return false
+        if (channel.sources.size <= 1) return false
+
+        val currentIndex = channel.sources.indexOfFirst { it.url == currentUrl }
+        if (currentIndex < 0) return false
+
+        val nextSource = channel.sources.drop(currentIndex + 1).firstOrNull()
+            ?: channel.sources.firstOrNull { it.url != currentUrl }
+            ?: return false
+
+        _manualSourceUrl.value = nextSource.url
+        return true
+    }
 
     fun refresh()       { viewModelScope.launch { repository.refresh(viewModelScope) } }
     fun clearAndRefresh() { viewModelScope.launch { repository.clearAndRefresh(viewModelScope) } }

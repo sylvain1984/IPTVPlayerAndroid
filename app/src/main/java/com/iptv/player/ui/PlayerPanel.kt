@@ -30,6 +30,7 @@ import com.iptv.player.data.StreamSource
 @Composable
 fun PlayerPanel(
     source: StreamSource?,
+    onTryFallbackSource: () -> Boolean,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -37,9 +38,22 @@ fun PlayerPanel(
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // One stable ExoPlayer instance; rebuilt when source URL changes
-    val player = remember(source?.url) {
-        if (source == null) return@remember null
+    // Keep one player instance and switch media item on source change.
+    val player = remember {
+        ExoPlayer.Builder(context).build().also { exo ->
+            exo.repeatMode = Player.REPEAT_MODE_ONE
+            exo.playWhenReady = true
+        }
+    }
+
+    LaunchedEffect(source?.url, source?.userAgent, source?.referer) {
+        if (source == null) {
+            player.stop()
+            player.clearMediaItems()
+            isLoading = false
+            errorMessage = null
+            return@LaunchedEffect
+        }
 
         val ua = source.userAgent
             ?: "Mozilla/5.0 (Linux; Android 11; TV) AppleWebKit/537.36"
@@ -47,25 +61,18 @@ fun PlayerPanel(
             put("User-Agent", ua)
             source.referer?.takeIf { it.isNotEmpty() }?.let { put("Referer", it) }
         }
-
         val dataSourceFactory = DefaultHttpDataSource.Factory()
             .setUserAgent(ua)
             .setDefaultRequestProperties(headers)
+        val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
+        val mediaSource = mediaSourceFactory.createMediaSource(
+            MediaItem.fromUri(Uri.parse(source.url))
+        )
 
-        ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
-            .build()
-            .also { exo ->
-                exo.repeatMode = Player.REPEAT_MODE_ONE
-                exo.setMediaItem(MediaItem.fromUri(Uri.parse(source.url)))
-                exo.prepare()
-                exo.playWhenReady = true
-            }
-    }
-
-    // Attach listener whenever player changes
-    LaunchedEffect(player) {
-        isLoading = player != null
+        player.setMediaSource(mediaSource)
+        player.prepare()
+        player.playWhenReady = true
+        isLoading = true
         errorMessage = null
     }
 
@@ -80,13 +87,18 @@ fun PlayerPanel(
             }
             override fun onPlayerError(error: PlaybackException) {
                 isLoading = false
-                errorMessage = error.localizedMessage ?: "播放失败，请尝试切换其他源"
+                val switched = onTryFallbackSource()
+                errorMessage = if (switched) {
+                    "当前源失败，正在自动切换备用源..."
+                } else {
+                    error.localizedMessage ?: "播放失败，请尝试切换其他源"
+                }
             }
         }
-        player?.addListener(listener)
+        player.addListener(listener)
         onDispose {
-            player?.removeListener(listener)
-            player?.release()
+            player.removeListener(listener)
+            player.release()
         }
     }
 

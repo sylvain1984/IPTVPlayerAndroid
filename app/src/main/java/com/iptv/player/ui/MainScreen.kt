@@ -105,6 +105,7 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
 
                     PlayerPanel(
                         source   = activeSource,
+                        onTryFallbackSource = { vm.trySwitchToNextSource() },
                         modifier = Modifier.fillMaxWidth().weight(1f)
                     )
 
