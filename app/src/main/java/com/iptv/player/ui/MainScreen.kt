@@ -164,7 +164,8 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                     Box(modifier = Modifier.weight(1f)) {
                         PlayerPanel(
                             source              = activeSource,
-                            onTryFallbackSource = { vm.trySwitchToNextSource() },
+                            onTryFallbackSource  = { vm.trySwitchToNextSource() },
+                            onRevalidateSources  = { vm.revalidateCurrentChannel() },
                             modifier            = Modifier.fillMaxSize()
                         )
 

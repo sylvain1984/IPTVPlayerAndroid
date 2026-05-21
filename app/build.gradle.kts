@@ -107,5 +107,8 @@ dependencies {
     // Coil (replaces AsyncImage)
     implementation("io.coil-kt:coil-compose:2.6.0")
 
+    // WorkManager — background periodic refresh
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

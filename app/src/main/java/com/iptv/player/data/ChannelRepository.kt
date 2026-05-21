@@ -175,6 +175,21 @@ class ChannelRepository(private val context: Context) {
         _progress.value = ""
     }
 
+    /** Re-validate ALL sources for one channel, then update its score ranking. */
+    suspend fun revalidateChannel(channelId: String) {
+        val channel = _channels.value.firstOrNull { it.id == channelId } ?: return
+        _progress.value = "重新检测 ${channel.name}…"
+        val validated = validator.validateChannel(channel, limit = channel.sources.size)
+        val list = _channels.value.toMutableList()
+        val idx = list.indexOfFirst { it.id == channelId }
+        if (idx >= 0) {
+            list[idx] = validated
+            _channels.value = list
+            save()
+        }
+        _progress.value = ""
+    }
+
     suspend fun clearAndRefresh(scope: CoroutineScope) {
         validationJob?.cancel()
         _channels.value = emptyList()

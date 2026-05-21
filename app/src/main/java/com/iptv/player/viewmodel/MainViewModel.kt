@@ -215,9 +215,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return true
     }
 
-    fun refresh()       { viewModelScope.launch { repository.refresh(viewModelScope) } }
+    fun refresh()         { viewModelScope.launch { repository.refresh(viewModelScope) } }
     fun clearAndRefresh() { viewModelScope.launch { repository.clearAndRefresh(viewModelScope) } }
     fun cancelValidation() { repository.cancelValidation() }
+
+    /** Called on playback error: re-validate all sources for the current channel.
+     *  If the manually selected source turns out to be bad, reset to bestSource. */
+    fun revalidateCurrentChannel() {
+        val channelId = _selectedChannelId.value ?: return
+        viewModelScope.launch {
+            repository.revalidateChannel(channelId)
+            // If we're locked onto a manually selected source that scored badly, release it
+            val manualUrl = _manualSourceUrl.value ?: return@launch
+            val channel = repository.channels.value.firstOrNull { it.id == channelId }
+            val manualScore = channel?.sources?.firstOrNull { it.url == manualUrl }?.score ?: 0.0
+            if (manualScore < 0.5) _manualSourceUrl.value = null
+        }
+    }
 
     fun addRemoteSource(url: String) {
         viewModelScope.launch { repository.addRemoteSource(url, viewModelScope) }

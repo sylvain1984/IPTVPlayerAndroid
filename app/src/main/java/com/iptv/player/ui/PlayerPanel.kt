@@ -31,6 +31,7 @@ import com.iptv.player.data.StreamSource
 fun PlayerPanel(
     source: StreamSource?,
     onTryFallbackSource: () -> Boolean,
+    onRevalidateSources: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -102,6 +103,8 @@ fun PlayerPanel(
                 } else {
                     error.localizedMessage ?: "播放失败，请尝试切换其他源"
                 }
+                // Trigger background re-validation of all sources for this channel
+                onRevalidateSources()
             }
         }
         player.addListener(listener)
