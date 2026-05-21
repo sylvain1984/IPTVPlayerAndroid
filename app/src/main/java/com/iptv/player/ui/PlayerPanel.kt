@@ -37,6 +37,8 @@ fun PlayerPanel(
 
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    // Once the stream plays once, suppress subsequent BUFFERING overlays for live streams
+    var hasEverBeenReady by remember { mutableStateOf(false) }
 
     // Keep one player instance and switch media item on source change.
     val player = remember {
@@ -64,6 +66,7 @@ fun PlayerPanel(
         val dataSourceFactory = DefaultHttpDataSource.Factory()
             .setUserAgent(ua)
             .setDefaultRequestProperties(headers)
+            .setAllowCrossProtocolRedirects(true)
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
         val mediaSource = mediaSourceFactory.createMediaSource(
             MediaItem.fromUri(Uri.parse(source.url))
@@ -72,6 +75,7 @@ fun PlayerPanel(
         player.setMediaSource(mediaSource)
         player.prepare()
         player.playWhenReady = true
+        hasEverBeenReady = false
         isLoading = true
         errorMessage = null
     }
@@ -80,8 +84,13 @@ fun PlayerPanel(
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 when (state) {
-                    Player.STATE_READY -> { isLoading = false; errorMessage = null }
-                    Player.STATE_BUFFERING -> isLoading = true
+                    Player.STATE_READY -> {
+                        isLoading = false
+                        hasEverBeenReady = true
+                        errorMessage = null
+                    }
+                    // Don't flash loading overlay on live-stream buffering after first play
+                    Player.STATE_BUFFERING -> if (!hasEverBeenReady) isLoading = true
                     else -> {}
                 }
             }
@@ -113,9 +122,7 @@ fun PlayerPanel(
                 factory = { ctx ->
                     PlayerView(ctx).apply {
                         this.player = player
-                        useController = true
-                        setShowNextButton(false)
-                        setShowPreviousButton(false)
+                        useController = false  // TV uses D-pad; we handle overlays ourselves
                     }
                 },
                 update = { view -> view.player = player },

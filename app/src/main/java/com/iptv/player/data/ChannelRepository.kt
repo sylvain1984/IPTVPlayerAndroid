@@ -12,12 +12,16 @@ import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -26,8 +30,9 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 class ChannelRepository(private val context: Context) {
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(12, TimeUnit.SECONDS)
-        .readTimeout(12, TimeUnit.SECONDS)
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(8, TimeUnit.SECONDS)
+        .connectionPool(ConnectionPool(64, 30, TimeUnit.SECONDS))
         .build()
 
     private val aggregator = SourceAggregator(client)
@@ -138,15 +143,16 @@ class ChannelRepository(private val context: Context) {
     }
 
     private suspend fun validateAllInBackground() {
-        val chunkSize = 32
+        val chunkSize = 48
         val list = _channels.value.toList()
 
         for (start in list.indices step chunkSize) {
             if (validationJob?.isCancelled == true) break
-            val chunk = list.subList(start, minOf(start + chunkSize, list.size))
+            val end = minOf(start + chunkSize, list.size)
+            val chunk = list.subList(start, end)
 
-            val updated = chunk.map { ch ->
-                withContext(Dispatchers.IO) { validator.validateChannel(ch, limit = 1) }
+            val updated = coroutineScope {
+                chunk.map { ch -> async { validator.validateChannel(ch, limit = 1) } }.awaitAll()
             }
 
             val current = _channels.value.toMutableList()
@@ -155,6 +161,7 @@ class ChannelRepository(private val context: Context) {
                 if (idx >= 0) current[idx] = ch
             }
             _channels.value = current
+            _progress.value = "验证中… $end / ${list.size}"
         }
 
         if (validationJob?.isCancelled != true) {

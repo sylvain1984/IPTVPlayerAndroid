@@ -12,6 +12,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -31,6 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.style.TextOverflow
@@ -41,6 +44,7 @@ import com.iptv.player.data.Channel
 @Composable
 fun ChannelListPanel(
     channels: List<Channel>,
+    totalChannelCount: Int,
     groups: List<String>,
     selectedChannelId: String?,
     selectedGroup: String?,
@@ -66,17 +70,30 @@ fun ChannelListPanel(
     var searchExpanded by remember { mutableStateOf(false) }
     val searchFocusRequester = remember { FocusRequester() }
 
+    // Scroll to the selected channel only when selection changes (not on every list update)
+    LaunchedEffect(selectedChannelId) {
+        if (selectedChannelId == null) return@LaunchedEffect
+        val idx = channels.indexOfFirst { it.id == selectedChannelId }
+        if (idx >= 0) listState.animateScrollToItem(idx)
+    }
+
     // Collapse search when text is cleared externally
     LaunchedEffect(searchText) {
         if (searchText.isEmpty()) searchExpanded = false
     }
+
+    // Derive favorites / rest split for the "全部" pinned-section layout
+    val isAllMode = !showOnlyFavorites && !showOnlyRecent && !showRecommended &&
+        selectedGroup == null && searchText.isEmpty()
+    val favChannels = if (isAllMode) channels.filter { it.isFavorite } else emptyList()
+    val restChannels = if (isAllMode) channels.filter { !it.isFavorite } else channels
 
     Column(
         modifier = modifier
             .background(MaterialTheme.colorScheme.surface)
             .fillMaxHeight()
     ) {
-        // Toolbar
+        // ── Toolbar ─────────────────────────────────────────────────────────
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -84,40 +101,26 @@ fun ChannelListPanel(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            TvIconButton(
-                onClick = onToggleFavoritesFilter,
-                tint = if (showOnlyFavorites) Color(0xFFFFCC00)
-                       else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-            ) {
-                Icon(
-                    if (showOnlyFavorites) Icons.Default.Star else Icons.Default.StarBorder,
-                    contentDescription = "收藏筛选",
-                    modifier = Modifier.size(20.dp)
-                )
+            val isFiltered = searchText.isNotEmpty() || selectedGroup != null ||
+                showOnlyFavorites
+            val countLabel = when {
+                progress.isNotEmpty() -> progress
+                isFiltered -> "${channels.size} / $totalChannelCount 个频道"
+                else -> "$totalChannelCount 个频道"
             }
+            Text(
+                countLabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
 
-            if (progress.isNotEmpty()) {
-                Text(
-                    progress,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-            } else {
-                Spacer(Modifier.weight(1f))
-            }
-
-            // Search toggle button — D-pad 可以直接选中它再按确认展开搜索框
             TvIconButton(
                 onClick = {
-                    if (searchExpanded) {
-                        searchExpanded = false
-                        onSearchChanged("")
-                    } else {
-                        searchExpanded = true
-                    }
+                    if (searchExpanded) { searchExpanded = false; onSearchChanged("") }
+                    else searchExpanded = true
                 },
                 tint = if (searchExpanded) MaterialTheme.colorScheme.primary
                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
@@ -139,69 +142,80 @@ fun ChannelListPanel(
             }
         }
 
-        // 搜索框：仅在展开时出现，展开后自动获取焦点
-        AnimatedVisibility(
-            visible = searchExpanded,
-            enter = expandVertically(),
-            exit = shrinkVertically()
-        ) {
-            LaunchedEffect(searchExpanded) {
-                if (searchExpanded) searchFocusRequester.requestFocus()
-            }
+        // ── Search bar ───────────────────────────────────────────────────────
+        AnimatedVisibility(visible = searchExpanded, enter = expandVertically(), exit = shrinkVertically()) {
+            LaunchedEffect(searchExpanded) { if (searchExpanded) searchFocusRequester.requestFocus() }
             TvSearchBar(
                 value = searchText,
                 onValueChange = onSearchChanged,
                 focusRequester = searchFocusRequester,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)
             )
         }
 
-        // Group filter chips
-        LazyRow(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            if (hasRecent) {
+        // ── Filter tab strip ─────────────────────────────────────────────────
+        Box(modifier = Modifier.fillMaxWidth()) {
+            LazyRow(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                // 收藏 tab — replaces the old toolbar star button
+                val favCount = channels.count { it.isFavorite }
                 item {
                     GroupChip(
-                        label   = "最近",
-                        selected = showOnlyRecent,
-                        icon    = Icons.Default.AccessTime,
-                        onClick = onShowRecent
+                        label         = if (favCount > 0) "收藏 ($favCount)" else "收藏",
+                        selected      = showOnlyFavorites,
+                        icon          = Icons.Default.Star,
+                        selectedColor = Color(0xFFFFCC00),
+                        onClick       = onToggleFavoritesFilter
+                    )
+                }
+                if (hasRecent) {
+                    item {
+                        GroupChip(
+                            label   = "最近",
+                            selected = showOnlyRecent,
+                            icon    = Icons.Default.AccessTime,
+                            onClick = onShowRecent
+                        )
+                    }
+                }
+                if (hasRecommended) {
+                    item {
+                        GroupChip(
+                            label   = "推荐",
+                            selected = showRecommended,
+                            icon    = Icons.Default.AutoAwesome,
+                            onClick = onToggleRecommended
+                        )
+                    }
+                }
+                item {
+                    GroupChip(
+                        label    = "全部",
+                        selected = !showOnlyFavorites && !showOnlyRecent && !showRecommended && selectedGroup == null,
+                        onClick  = { onGroupSelected(null) }
+                    )
+                }
+                items(groups) { g ->
+                    GroupChip(
+                        label    = g,
+                        selected = !showOnlyFavorites && !showOnlyRecent && !showRecommended && selectedGroup == g,
+                        onClick  = { onGroupSelected(if (selectedGroup == g) null else g) }
                     )
                 }
             }
-            if (hasRecommended) {
-                item {
-                    GroupChip(
-                        label   = "推荐",
-                        selected = showRecommended,
-                        icon    = Icons.Default.AutoAwesome,
-                        onClick = onToggleRecommended
-                    )
-                }
-            }
-            item {
-                GroupChip(
-                    label    = "全部",
-                    selected = !showOnlyRecent && !showRecommended && selectedGroup == null,
-                    onClick  = { onGroupSelected(null) }
-                )
-            }
-            items(groups) { g ->
-                GroupChip(
-                    label    = g,
-                    selected = !showOnlyRecent && !showRecommended && selectedGroup == g,
-                    onClick  = { onGroupSelected(if (selectedGroup == g) null else g) }
-                )
-            }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .width(24.dp).height(36.dp)
+                    .background(Brush.horizontalGradient(listOf(Color.Transparent, MaterialTheme.colorScheme.surface)))
+            )
         }
 
         HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
 
-        // Channel list
+        // ── Channel list ─────────────────────────────────────────────────────
         if (channels.isEmpty() && !isRefreshing) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
@@ -217,7 +231,26 @@ fun ChannelListPanel(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(vertical = 4.dp)
             ) {
-                items(channels, key = { it.id }) { ch ->
+                // In "全部" mode: favorites pinned at top with a section header
+                if (isAllMode && favChannels.isNotEmpty()) {
+                    item(key = "__fav_header__") {
+                        SectionHeader(text = "★ 收藏 (${favChannels.size})", gold = true)
+                    }
+                    items(favChannels, key = { "fav_${it.id}" }) { ch ->
+                        ChannelItem(
+                            channel = ch,
+                            isSelected = ch.id == selectedChannelId,
+                            onSelect = { onSelectChannel(ch.id) },
+                            onToggleFavorite = { onToggleFavorite(ch) }
+                        )
+                    }
+                    if (restChannels.isNotEmpty()) {
+                        item(key = "__all_header__") {
+                            SectionHeader(text = "全部频道 (${restChannels.size})")
+                        }
+                    }
+                }
+                items(restChannels, key = { it.id }) { ch ->
                     ChannelItem(
                         channel = ch,
                         isSelected = ch.id == selectedChannelId,
@@ -227,6 +260,28 @@ fun ChannelListPanel(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SectionHeader(text: String, gold: Boolean = false) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .padding(horizontal = 14.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (gold) {
+            Box(modifier = Modifier.width(3.dp).height(14.dp).background(Color(0xFFFFCC00)))
+            Spacer(Modifier.width(8.dp))
+        }
+        Text(
+            text,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (gold) Color(0xFFFFCC00)
+                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+        )
     }
 }
 
@@ -243,14 +298,19 @@ private fun ChannelItem(
     val bgColor = when {
         isSelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
         isFocused  -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f)
+        channel.isFavorite -> Color(0xFFFFCC00).copy(alpha = 0.06f)
         else       -> Color.Transparent
     }
 
+    // Left accent bar: gold for favorites, primary for selected, subtle for focused
     val accentColor = when {
+        channel.isFavorite && isSelected -> Color(0xFFFFCC00)
+        channel.isFavorite -> Color(0xFFFFCC00).copy(alpha = 0.7f)
         isSelected -> MaterialTheme.colorScheme.primary
         isFocused  -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
         else       -> Color.Transparent
     }
+    val accentWidth = if (channel.isFavorite) 4.dp else 3.dp
 
     Box(
         modifier = Modifier
@@ -261,67 +321,66 @@ private fun ChannelItem(
             .clickable(onClick = onSelect)
             .background(bgColor)
     ) {
-        // 左侧焦点色条
         Box(
             modifier = Modifier
                 .align(Alignment.CenterStart)
-                .width(3.dp)
+                .width(accentWidth)
                 .fillMaxHeight()
                 .background(accentColor)
         )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 15.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+                .padding(start = 15.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-        ChannelLogo(channel.logoUrl, modifier = Modifier.size(32.dp))
+            ChannelLogo(channel.logoUrl, modifier = Modifier.size(32.dp))
 
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                channel.name,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                color = when {
-                    isSelected -> MaterialTheme.colorScheme.primary
-                    isFocused  -> MaterialTheme.colorScheme.onSurface
-                    else       -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
-                }
-            )
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                ScoreDot(channel.bestSource?.score ?: 0.0)
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "${channel.sources.size} 源",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    channel.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = when {
+                        isSelected -> MaterialTheme.colorScheme.primary
+                        isFocused  -> MaterialTheme.colorScheme.onSurface
+                        else       -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
+                    }
                 )
-                channel.groupTitle?.let { g ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    ScoreDot(channel.bestSource?.score ?: 0.0)
                     Text(
-                        g,
+                        "${channel.sources.size} 源",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                        maxLines = 1
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                     )
+                    channel.groupTitle?.let { g ->
+                        Text(
+                            g,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                            maxLines = 1
+                        )
+                    }
                 }
             }
-        }
 
-        TvIconButton(onClick = onToggleFavorite) {
-            Icon(
-                if (channel.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-                tint = if (channel.isFavorite) Color(0xFFFFCC00)
-                       else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-            )
+            TvIconButton(onClick = onToggleFavorite) {
+                Icon(
+                    if (channel.isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                    contentDescription = if (channel.isFavorite) "取消收藏" else "收藏",
+                    modifier = Modifier.size(22.dp),
+                    tint = if (channel.isFavorite) Color(0xFFFFCC00)
+                           else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)
+                )
+            }
         }
-        } // end Row
-    } // end Box
+    }
 }
 
 @Composable
@@ -344,36 +403,51 @@ private fun ChannelLogo(logoUrl: String?, modifier: Modifier = Modifier) {
 @Composable
 private fun ScoreDot(score: Double) {
     val color = when {
-        score >= 1.0 -> Color(0xFF4CAF50)
-        score >= 0.5 -> Color(0xFFFFEB3B)
-        score > 0   -> Color(0xFFFF9800)
-        else        -> Color.Gray
+        score >= 1.0 -> Color(0xFF4CAF50)   // green  — confirmed working
+        score >= 0.5 -> Color(0xFFFFEB3B)   // yellow — probably working
+        score > 0.0 -> Color(0xFFFF6B35)    // orange — checked but poor
+        else        -> Color(0xFF555555)     // dark gray — not yet checked
     }
-    Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(color))
+    Box(
+        modifier = Modifier
+            .size(9.dp)
+            .clip(CircleShape)
+            .background(color)
+    )
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun GroupChip(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
-    icon: androidx.compose.ui.graphics.vector.ImageVector? = null
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    selectedColor: Color = Color.Unspecified
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    val bringIntoViewRequester = remember { BringIntoViewRequester() }
+    val activeColor = if (selectedColor != Color.Unspecified) selectedColor
+                      else MaterialTheme.colorScheme.primary
+
+    LaunchedEffect(isFocused) {
+        if (isFocused) bringIntoViewRequester.bringIntoView()
+    }
 
     Row(
         modifier = Modifier
+            .bringIntoViewRequester(bringIntoViewRequester)
             .clip(RoundedCornerShape(16.dp))
             .background(
                 when {
-                    selected  -> MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+                    selected  -> activeColor.copy(alpha = 0.2f)
                     isFocused -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f)
                     else      -> MaterialTheme.colorScheme.surfaceVariant
                 }
             )
             .then(
-                if (selected) Modifier.border(1.dp, MaterialTheme.colorScheme.primary,
-                    RoundedCornerShape(16.dp)) else Modifier
+                if (selected) Modifier.border(1.dp, activeColor, RoundedCornerShape(16.dp))
+                else Modifier
             )
             .onFocusChanged { isFocused = it.isFocused }
             .focusable()
@@ -387,15 +461,13 @@ private fun GroupChip(
                 icon,
                 contentDescription = null,
                 modifier = Modifier.size(12.dp),
-                tint = if (selected) MaterialTheme.colorScheme.primary
-                       else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                tint = if (selected) activeColor else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
         }
         Text(
             label,
             style = MaterialTheme.typography.labelMedium,
-            color = if (selected) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+            color = if (selected) activeColor else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
         )
     }
 }

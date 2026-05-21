@@ -7,20 +7,24 @@ import com.iptv.player.data.Channel
 import com.iptv.player.data.ChannelRepository
 import com.iptv.player.data.SourceAggregator
 import com.iptv.player.data.StreamSource
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
+@OptIn(FlowPreview::class)
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = ChannelRepository(application)
 
-    val isRefreshing: StateFlow<Boolean> = repository.isRefreshing
-    val progress: StateFlow<String>      = repository.progress
-    val lastRefreshMs: StateFlow<Long?>  = repository.lastRefreshMs
+    val isRefreshing: StateFlow<Boolean>  = repository.isRefreshing
+    val progress: StateFlow<String>       = repository.progress
+    val lastRefreshMs: StateFlow<Long?>   = repository.lastRefreshMs
+    val allChannels: StateFlow<List<Channel>> = repository.channels
 
     private val _selectedChannelId  = MutableStateFlow<String?>(null)
     private val _manualSourceUrl    = MutableStateFlow<String?>(null)
-    private val _searchText         = MutableStateFlow("")
+    private val _rawSearchText      = MutableStateFlow("")
     private val _selectedGroup      = MutableStateFlow<String?>(null)
     private val _showOnlyFavorites   = MutableStateFlow(false)
     private val _showAddSourceDialog = MutableStateFlow(false)
@@ -31,7 +35,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val showRecommended:   StateFlow<Boolean> = _showRecommended.asStateFlow()
 
     val selectedChannelId:   StateFlow<String?>  = _selectedChannelId.asStateFlow()
-    val searchText:          StateFlow<String>   = _searchText.asStateFlow()
+    val searchText:          StateFlow<String>   = _rawSearchText.asStateFlow()
+    private val _debouncedSearch: StateFlow<String> = _rawSearchText
+        .debounce(300.milliseconds)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "")
     val selectedGroup:       StateFlow<String?>  = _selectedGroup.asStateFlow()
     val showOnlyFavorites:   StateFlow<Boolean>  = _showOnlyFavorites.asStateFlow()
     val showAddSourceDialog: StateFlow<Boolean>  = _showAddSourceDialog.asStateFlow()
@@ -87,6 +94,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             chs
                 .filter { it.id !in recentIds }
+                // Skip channels confirmed bad by validation (best source checked but score < 0.5)
+                .filter { ch ->
+                    val best = ch.bestSource
+                    best?.lastCheckedMs == null || best.score >= 0.5
+                }
                 .map { ch ->
                     val watchCount = history[ch.id]?.watchCount ?: 0
                     val score =
@@ -107,7 +119,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         combine(
             repository.channels,
             repository.watchHistory,
-            _searchText,
+            _debouncedSearch,
             _selectedGroup,
             _showOnlyFavorites,
             _showOnlyRecent
@@ -167,7 +179,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectSource(url: String)  { _manualSourceUrl.value = url }
-    fun setSearch(text: String)    { _searchText.value = text }
+    fun setSearch(text: String)    { _rawSearchText.value = text }
     fun setGroup(group: String?)   { _selectedGroup.value = group; _showOnlyRecent.value = false; _showRecommended.value = false }
     fun toggleFavoritesFilter()    { _showOnlyFavorites.value = !_showOnlyFavorites.value; _showOnlyRecent.value = false; _showRecommended.value = false }
     fun showAddSource()            { _showAddSourceDialog.value = true }
