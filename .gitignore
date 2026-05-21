@@ -28,3 +28,7 @@ captures/
 
 # ProGuard mapping
 *.map
+
+# Local screenshots / emulator artifacts
+emulator_preview.png
+META-INF/
