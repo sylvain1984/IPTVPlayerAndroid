@@ -1,6 +1,8 @@
 package com.iptv.player.ui
 
+import android.app.Activity
 import android.net.Uri
+import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -32,16 +34,16 @@ fun PlayerPanel(
     source: StreamSource?,
     onTryFallbackSource: () -> Boolean,
     onRevalidateSources: () -> Unit = {},
+    onErrorNoFallback: () -> Unit = {},   // called when all sources fail — exit fullscreen
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val activity = context as? Activity
 
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    // Once the stream plays once, suppress subsequent BUFFERING overlays for live streams
     var hasEverBeenReady by remember { mutableStateOf(false) }
 
-    // Keep one player instance and switch media item on source change.
     val player = remember {
         ExoPlayer.Builder(context).build().also { exo ->
             exo.repeatMode = Player.REPEAT_MODE_ONE
@@ -55,6 +57,7 @@ fun PlayerPanel(
             player.clearMediaItems()
             isLoading = false
             errorMessage = null
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             return@LaunchedEffect
         }
 
@@ -89,28 +92,36 @@ fun PlayerPanel(
                         isLoading = false
                         hasEverBeenReady = true
                         errorMessage = null
+                        // Prevent screensaver / display sleep while playing
+                        activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                     }
                     // Don't flash loading overlay on live-stream buffering after first play
                     Player.STATE_BUFFERING -> if (!hasEverBeenReady) isLoading = true
+                    Player.STATE_IDLE, Player.STATE_ENDED -> {
+                        activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    }
                     else -> {}
                 }
             }
             override fun onPlayerError(error: PlaybackException) {
                 isLoading = false
+                activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 val switched = onTryFallbackSource()
                 errorMessage = if (switched) {
                     "当前源失败，正在自动切换备用源..."
                 } else {
                     error.localizedMessage ?: "播放失败，请尝试切换其他源"
                 }
-                // Trigger background re-validation of all sources for this channel
                 onRevalidateSources()
+                // No more sources to try — exit fullscreen so user can pick another channel
+                if (!switched) onErrorNoFallback()
             }
         }
         player.addListener(listener)
         onDispose {
             player.removeListener(listener)
             player.release()
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
 
@@ -125,7 +136,7 @@ fun PlayerPanel(
                 factory = { ctx ->
                     PlayerView(ctx).apply {
                         this.player = player
-                        useController = false  // TV uses D-pad; we handle overlays ourselves
+                        useController = false
                     }
                 },
                 update = { view -> view.player = player },

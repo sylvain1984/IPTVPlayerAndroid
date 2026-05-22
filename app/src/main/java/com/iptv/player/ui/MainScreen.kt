@@ -172,6 +172,7 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                             source              = activeSource,
                             onTryFallbackSource  = { vm.trySwitchToNextSource() },
                             onRevalidateSources  = { vm.revalidateCurrentChannel() },
+                            onErrorNoFallback    = { userExitedFullscreen = true },
                             modifier            = Modifier.fillMaxSize()
                         )
 
