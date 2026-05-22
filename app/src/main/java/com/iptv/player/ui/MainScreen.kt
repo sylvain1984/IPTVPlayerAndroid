@@ -60,21 +60,27 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
     val showOnlyRecent      by vm.showOnlyRecent.collectAsStateWithLifecycle()
     val showRecommended     by vm.showRecommended.collectAsStateWithLifecycle()
 
-    var isFullscreen by remember { mutableStateOf(false) }
-    var showOverlay  by remember { mutableStateOf(false) }
+    // userExitedFullscreen: set when user explicitly presses Back from fullscreen.
+    // Resets automatically when a new channel is selected.
+    var userExitedFullscreen by remember { mutableStateOf(false) }
+    LaunchedEffect(selectedId) { userExitedFullscreen = false }
+
+    // Derive isFullscreen directly — no coroutine delay, fires on the same frame as selection.
+    val isFullscreen = selectedId != null && !userExitedFullscreen
+
+    var showOverlay by remember { mutableStateOf(false) }
 
     // Animate the sidebar width: 320dp when visible, 0dp when fullscreen
     val sidebarWidth by animateDpAsState(
-        targetValue    = if (isFullscreen) 0.dp else 320.dp,
-        animationSpec  = tween(durationMillis = 280),
-        label          = "sidebar"
+        targetValue   = if (isFullscreen) 0.dp else 320.dp,
+        animationSpec = tween(durationMillis = 280),
+        label         = "sidebar"
     )
 
-    // Enter fullscreen whenever a channel is selected
+    // Show overlay briefly when entering fullscreen (new channel selected)
     LaunchedEffect(selectedId) {
         if (selectedId != null) {
-            isFullscreen = true
-            showOverlay  = true
+            showOverlay = true
         }
     }
 
@@ -92,7 +98,7 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
     // Back: exit fullscreen first, then clear filters
     BackHandler(enabled = isFullscreen || hasActiveFilter) {
         when {
-            isFullscreen            -> isFullscreen = false
+            isFullscreen            -> userExitedFullscreen = true
             searchText.isNotEmpty() -> vm.setSearch("")
             showOnlyRecent          -> vm.showRecent()
             showRecommended         -> vm.toggleRecommended()
@@ -193,7 +199,7 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                                 onToggleFavorite = { vm.toggleFavorite(selectedChannel!!) },
                                 onShowAddSource  = { vm.showAddSource() },
                                 onClearRefresh   = { vm.clearAndRefresh() },
-                                onExitFullscreen = { isFullscreen = false },
+                                onExitFullscreen = { userExitedFullscreen = true },
                                 modifier         = Modifier
                                     .align(Alignment.TopStart)
                                     .fillMaxWidth()
