@@ -40,7 +40,8 @@ class StreamValidator(private val client: OkHttpClient) {
                         else -> 0.3
                     }
                 }
-                code == 403 || code == 404 || code == 410 -> 0.1
+                code == 403 -> 0.6
+                code == 404 || code == 410 -> 0.1
                 else -> 0.3
             }
 

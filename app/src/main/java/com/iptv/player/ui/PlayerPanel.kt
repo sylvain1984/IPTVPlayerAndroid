@@ -26,6 +26,8 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
+import com.iptv.player.data.Channel
+import com.iptv.player.data.RtcManager
 import com.iptv.player.data.StreamSource
 
 @OptIn(UnstableApi::class)
@@ -34,9 +36,15 @@ fun PlayerPanel(
     source: StreamSource?,
     onTryFallbackSource: () -> Boolean,
     onRevalidateSources: () -> Unit = {},
-    onErrorNoFallback: () -> Unit = {},   // called when all sources fail — exit fullscreen
+    onErrorNoFallback: () -> Unit = {},
+    channel: Channel? = null,
+    rtcManager: RtcManager? = null,
     modifier: Modifier = Modifier
 ) {
+    if (channel?.isRtc == true && rtcManager != null) {
+        RtcPlayerView(channel = channel, rtcManager = rtcManager, modifier = modifier)
+        return
+    }
     val context = LocalContext.current
     val activity = context as? Activity
 

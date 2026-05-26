@@ -110,5 +110,8 @@ dependencies {
     // WorkManager — background periodic refresh
     implementation("androidx.work:work-runtime-ktx:2.9.0")
 
+    // Volcano Engine RTC SDK
+    implementation("com.volcengine:VolcEngineRTC:3.56.0")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

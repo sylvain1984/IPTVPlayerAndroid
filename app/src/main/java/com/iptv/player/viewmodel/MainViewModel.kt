@@ -5,9 +5,11 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.iptv.player.data.Channel
 import com.iptv.player.data.ChannelRepository
+import com.iptv.player.data.RtcManager
 import com.iptv.player.data.SourceAggregator
 import com.iptv.player.data.StreamSource
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
@@ -16,6 +18,7 @@ import kotlin.time.Duration.Companion.milliseconds
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = ChannelRepository(application)
+    val rtcManager = RtcManager(application)
 
     val isRefreshing: StateFlow<Boolean>  = repository.isRefreshing
     val progress: StateFlow<String>       = repository.progress
@@ -26,13 +29,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _manualSourceUrl    = MutableStateFlow<String?>(null)
     private val _rawSearchText      = MutableStateFlow("")
     private val _selectedGroup      = MutableStateFlow<String?>(null)
+    private val _selectedSubcategory = MutableStateFlow<String?>(null)
     private val _showOnlyFavorites   = MutableStateFlow(false)
     private val _showAddSourceDialog = MutableStateFlow(false)
     private val _showOnlyRecent      = MutableStateFlow(false)
     private val _showRecommended     = MutableStateFlow(false)
+    private val _showExclusive       = MutableStateFlow(false)
 
     val showOnlyRecent:    StateFlow<Boolean> = _showOnlyRecent.asStateFlow()
     val showRecommended:   StateFlow<Boolean> = _showRecommended.asStateFlow()
+    val showExclusive:     StateFlow<Boolean> = _showExclusive.asStateFlow()
 
     val selectedChannelId:   StateFlow<String?>  = _selectedChannelId.asStateFlow()
     val searchText:          StateFlow<String>   = _rawSearchText.asStateFlow()
@@ -40,6 +46,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .debounce(300.milliseconds)
         .stateIn(viewModelScope, SharingStarted.Eagerly, "")
     val selectedGroup:       StateFlow<String?>  = _selectedGroup.asStateFlow()
+    val selectedSubcategory: StateFlow<String?>  = _selectedSubcategory.asStateFlow()
     val showOnlyFavorites:   StateFlow<Boolean>  = _showOnlyFavorites.asStateFlow()
     val showAddSourceDialog: StateFlow<Boolean>  = _showAddSourceDialog.asStateFlow()
 
@@ -61,7 +68,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Sorted list of group names present in the full channel list */
     val groups: StateFlow<List<String>> =
         repository.channels
-            .map { chs -> chs.mapNotNull { it.groupTitle }.distinct().sorted() }
+            .map { chs -> chs.filter { !it.isRtc }.mapNotNull { it.groupTitle }.distinct().sorted() }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    private val subcategoryOrder = listOf("儿童", "地方", "港澳台", "纪录片", "动漫", "音乐", "赛事专区")
+    val subcategories: StateFlow<List<String>> =
+        repository.channels
+            .map { chs -> subcategoryOrder.filter { tag -> chs.any { !it.isRtc && matchesSubcategory(it, tag) } } }
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /** Last 20 watched channels, most recent first */
@@ -87,13 +100,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 .map { it.channelId }
                 .toSet()
 
+            val prioritized = prioritizedCctvChannels(chs)
+
             val interestGroups: Set<String> = chs
                 .filter { it.isFavorite || it.id in recentIds }
                 .mapNotNull { it.groupTitle }
                 .toSet()
 
-            chs
+            val scored = chs
                 .filter { it.id !in recentIds }
+                .filter { isUsableChannelStrict(it) || isPriorityCctv(it) }
                 // Skip channels confirmed bad by validation (best source checked but score < 0.5)
                 .filter { ch ->
                     val best = ch.bestSource
@@ -112,6 +128,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 .sortedByDescending { it.second }
                 .take(20)
                 .map { it.first }
+
+            (prioritized + scored).distinctBy { it.id }.take(20)
         }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /** Channels after applying search / group / favorites / recent filters */
@@ -121,8 +139,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             repository.watchHistory,
             _debouncedSearch,
             _selectedGroup,
+            _selectedSubcategory,
             _showOnlyFavorites,
-            _showOnlyRecent
+            _showOnlyRecent,
+            _showExclusive
         ) { arr ->
             @Suppress("UNCHECKED_CAST")
             val chs      = arr[0] as List<Channel>
@@ -130,8 +150,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val history  = arr[1] as Map<String, com.iptv.player.data.WatchRecord>
             val search   = arr[2] as String
             val group    = arr[3] as String?
-            val favOnly  = arr[4] as Boolean
-            val recentOnly = arr[5] as Boolean
+            val subcategory = arr[4] as String?
+            val favOnly  = arr[5] as Boolean
+            val recentOnly = arr[6] as Boolean
+            val exclusiveOnly = arr[7] as Boolean
 
             val recentIds = if (recentOnly) {
                 history.values
@@ -143,8 +165,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             chs.filter { ch ->
                 if (recentOnly && ch.id !in recentIds) return@filter false
+                if (exclusiveOnly && !ch.isRtc) return@filter false
+                if (!exclusiveOnly && ch.isRtc) return@filter false
                 if (favOnly && !ch.isFavorite) return@filter false
                 if (group != null && ch.groupTitle != group) return@filter false
+                if (subcategory != null && !matchesSubcategory(ch, subcategory)) return@filter false
                 if (search.isNotEmpty() && !ch.name.contains(search, ignoreCase = true))
                     return@filter false
                 true
@@ -162,11 +187,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     init {
         viewModelScope.launch {
             repository.load()
+            repository.refreshLiveChannels()
             val needRefresh = repository.channels.value.isEmpty() ||
                 repository.lastRefreshMs.value.let { last ->
                     last == null || System.currentTimeMillis() - last > 24 * 3_600_000L
                 }
             if (needRefresh) repository.refresh(viewModelScope)
+        }
+        viewModelScope.launch {
+            while (isActive) {
+                repository.refreshLiveChannels()
+                kotlinx.coroutines.delay(30_000)
+            }
         }
     }
 
@@ -180,19 +212,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectSource(url: String)  { _manualSourceUrl.value = url }
     fun setSearch(text: String)    { _rawSearchText.value = text }
-    fun setGroup(group: String?)   { _selectedGroup.value = group; _showOnlyRecent.value = false; _showRecommended.value = false }
-    fun toggleFavoritesFilter()    { _showOnlyFavorites.value = !_showOnlyFavorites.value; _showOnlyRecent.value = false; _showRecommended.value = false }
+    fun setGroup(group: String?)   { _selectedGroup.value = group; _showOnlyRecent.value = false; _showRecommended.value = false; _showExclusive.value = false }
+    fun setSubcategory(tag: String?) { _selectedSubcategory.value = tag; _showOnlyRecent.value = false; _showRecommended.value = false; _showExclusive.value = false }
+    fun toggleFavoritesFilter()    { _showOnlyFavorites.value = !_showOnlyFavorites.value; _showOnlyRecent.value = false; _showRecommended.value = false; _showExclusive.value = false; _selectedSubcategory.value = null }
     fun showAddSource()            { _showAddSourceDialog.value = true }
     fun hideAddSource()            { _showAddSourceDialog.value = false }
     fun showRecent() {
         val on = !_showOnlyRecent.value
         _showOnlyRecent.value = on
-        if (on) { _showRecommended.value = false; _selectedGroup.value = null; _showOnlyFavorites.value = false }
+        if (on) { _showRecommended.value = false; _selectedGroup.value = null; _selectedSubcategory.value = null; _showOnlyFavorites.value = false; _showExclusive.value = false }
     }
     fun toggleRecommended() {
         val on = !_showRecommended.value
         _showRecommended.value = on
-        if (on) { _showOnlyRecent.value = false; _selectedGroup.value = null; _showOnlyFavorites.value = false }
+        if (on) { _showOnlyRecent.value = false; _selectedGroup.value = null; _selectedSubcategory.value = null; _showOnlyFavorites.value = false; _showExclusive.value = false }
+    }
+    fun toggleExclusive() {
+        val on = !_showExclusive.value
+        _showExclusive.value = on
+        if (on) { _showOnlyRecent.value = false; _showRecommended.value = false; _selectedGroup.value = null; _selectedSubcategory.value = null; _showOnlyFavorites.value = false }
     }
 
     fun toggleFavorite(channel: Channel)  {
@@ -237,10 +275,108 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.addRemoteSource(url, viewModelScope) }
     }
 
+    override fun onCleared() {
+        super.onCleared()
+        rtcManager.release()
+    }
+
     fun addOptionalSourceGroup(groupKey: String) {
         val urls = SourceAggregator.OPTIONAL_SOURCES[groupKey] ?: return
         viewModelScope.launch {
             urls.forEach { repository.addRemoteSource(it, viewModelScope) }
+        }
+    }
+
+    private fun prioritizedCctvChannels(channels: List<Channel>): List<Channel> {
+        val candidates = channels.filter { isUsableChannelStrict(it) || isPriorityCctv(it) }
+        val cctv5Hd = candidates.filter { channelType(it) == PriorityType.CCTV5_HD }.sortedBy { cctvRank(it) }
+        val cctv5 = preferred720pOnly(candidates.filter { channelType(it) == PriorityType.CCTV5 }, "cctv5")
+            .sortedBy { cctvRank(it) }
+        val cctv5Plus = preferred720pOnly(candidates.filter { channelType(it) == PriorityType.CCTV5_PLUS }, "cctv5+")
+            .sortedBy { cctvRank(it) }
+        val cctvOther = channels.filter { isUsableChannel(it) && channelType(it) == PriorityType.CCTV_OTHER }.sortedBy { cctvRank(it) }
+        return cctv5Hd + cctv5 + cctv5Plus + cctvOther
+    }
+
+    private enum class PriorityType { NONE, CCTV5_HD, CCTV5, CCTV5_PLUS, CCTV_OTHER }
+
+    private fun channelType(channel: Channel): PriorityType {
+        val normalized = normalizedCctvName(channel.name)
+        val isCctv5 = normalized.contains("cctv5")
+        val isCctv5Plus = normalized.contains("cctv5+")
+        val isHd = normalized.contains("高清") || normalized.contains("hd")
+        if (isCctv5 && isHd) return PriorityType.CCTV5_HD
+        if (isCctv5Plus) return PriorityType.CCTV5_PLUS
+        if (isCctv5) return PriorityType.CCTV5
+        if (normalized.contains("cctv")) return PriorityType.CCTV_OTHER
+        return PriorityType.NONE
+    }
+
+    private fun normalizedCctvName(name: String): String {
+        return name.lowercase()
+            .replace("-", "")
+            .replace("－", "")
+            .replace("＋", "+")
+            .replace("_", "")
+            .replace(" ", "")
+    }
+
+    private fun cctvRank(channel: Channel): Int {
+        val n = normalizedCctvName(channel.name)
+        return when {
+            n == "cctv5高清" -> 0
+            n == "cctv5" -> 1
+            n == "cctv5+" -> 2
+            n.contains("cctv5高清") -> 3
+            n.contains("cctv5+") -> 4
+            n.contains("cctv5") -> 5
+            else -> 10
+        }
+    }
+
+    private fun preferred720pOnly(channels: List<Channel>, key: String): List<Channel> {
+        val exact = channels.filter { matchesCctvKey(normalizedCctvName(it.name), key) }
+        val only720 = exact.filter { normalizedCctvName(it.name).contains("720p") }
+        return if (only720.isEmpty()) exact else only720
+    }
+
+    private fun matchesCctvKey(normalizedName: String, key: String): Boolean {
+        if (key == "cctv5") {
+            // cctv5 组不应吸入 cctv5+
+            return normalizedName.contains("cctv5") && !normalizedName.contains("cctv5+")
+        }
+        if (key == "cctv5+") {
+            return normalizedName.contains("cctv5+")
+        }
+        return normalizedName.contains(key)
+    }
+
+    private fun isUsableChannel(channel: Channel): Boolean {
+        val best = channel.bestSource ?: return false
+        return best.lastCheckedMs == null || best.score >= 0.5
+    }
+
+    private fun isUsableChannelStrict(channel: Channel): Boolean {
+        return channel.sources.any { it.lastCheckedMs != null && it.score >= 0.5 }
+    }
+
+    private fun isPriorityCctv(channel: Channel): Boolean {
+        if (channel.sources.isEmpty()) return false
+        val n = normalizedCctvName(channel.name)
+        return n.contains("cctv5")
+    }
+
+    private fun matchesSubcategory(channel: Channel, tag: String): Boolean {
+        val text = "${channel.name} ${channel.groupTitle ?: ""}".lowercase()
+        return when (tag) {
+            "儿童" -> listOf("儿童", "少儿", "卡通", "动漫", "动画", "亲子", "kid").any { text.contains(it) }
+            "地方" -> listOf("卫视", "地方", "都市", "公共", "新闻综合", "经济生活").any { text.contains(it) }
+            "港澳台" -> listOf("香港", "澳门", "台湾", "tvb", "翡翠", "hk", "tw").any { text.contains(it) }
+            "纪录片" -> listOf("纪录", "documentary", "discovery", "国家地理").any { text.contains(it) }
+            "动漫" -> listOf("动漫", "动画", "anime", "二次元", "卡通").any { text.contains(it) }
+            "音乐" -> listOf("音乐", "music", "mtv", "演唱会").any { text.contains(it) }
+            "赛事专区" -> listOf("英超", "西甲", "欧冠", "nba", "cba", "ufc", "f1", "nfl", "mlb").any { text.contains(it) }
+            else -> false
         }
     }
 }

@@ -6,8 +6,12 @@ data class Channel(
     val logoUrl: String? = null,
     val groupTitle: String? = null,
     val sources: List<StreamSource> = emptyList(),
-    val isFavorite: Boolean = false
+    val isFavorite: Boolean = false,
+    val isRtc: Boolean = false
 ) {
+    val rtcRoomId: String
+        get() = sources.firstOrNull()?.url?.removePrefix("rtc://") ?: "iptv_private"
+
     val bestSource: StreamSource?
         get() = sources
             .sortedWith(compareByDescending<StreamSource> { it.score }

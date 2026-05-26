@@ -43,7 +43,9 @@ class ChannelRepository(private val context: Context) {
     private val KEY_LAST_REFRESH  = longPreferencesKey("last_refresh_ms")
     private val KEY_WATCH_HISTORY = stringPreferencesKey("watch_history_json")
 
-    private val _channels = MutableStateFlow<List<Channel>>(emptyList())
+    private var liveChannels: List<Channel> = emptyList()
+
+private val _channels = MutableStateFlow<List<Channel>>(emptyList())
     val channels: StateFlow<List<Channel>> = _channels.asStateFlow()
 
     // channelId -> WatchRecord，供 ViewModel 组合使用
@@ -65,7 +67,8 @@ class ChannelRepository(private val context: Context) {
         val prefs = context.dataStore.data.first()
         val json = prefs[KEY_CHANNELS] ?: return@withContext
         val type = object : TypeToken<List<Channel>>() {}.type
-        _channels.value = gson.fromJson(json, type) ?: emptyList()
+        val loaded: List<Channel> = gson.fromJson(json, type) ?: emptyList()
+        _channels.value = liveChannels + loaded.filter { !it.isRtc }
         _lastRefreshMs.value = prefs[KEY_LAST_REFRESH]
         val historyJson = prefs[KEY_WATCH_HISTORY]
         if (historyJson != null) {
@@ -76,7 +79,7 @@ class ChannelRepository(private val context: Context) {
 
     private suspend fun save() = withContext(Dispatchers.IO) {
         context.dataStore.edit { prefs ->
-            prefs[KEY_CHANNELS] = gson.toJson(_channels.value)
+            prefs[KEY_CHANNELS] = gson.toJson(_channels.value.filter { !it.isRtc })
             _lastRefreshMs.value?.let { prefs[KEY_LAST_REFRESH] = it }
             prefs[KEY_WATCH_HISTORY] = gson.toJson(_watchHistory.value)
         }
@@ -118,7 +121,7 @@ class ChannelRepository(private val context: Context) {
             .flatMap { it.sources }
             .associateBy { it.url }
 
-        _channels.value = fetched.map { ch ->
+        _channels.value = liveChannels + fetched.map { ch ->
             ch.copy(
                 isFavorite = ch.id in favoriteIds,
                 sources = ch.sources.map { src ->
@@ -196,6 +199,30 @@ class ChannelRepository(private val context: Context) {
         _lastRefreshMs.value = null
         context.dataStore.edit { it.clear() }
         refresh(scope)
+    }
+
+    suspend fun refreshLiveChannels() {
+        val fetched = LiveChannelRegistry.fetchAll(client).map { it.toChannel() }
+        val fallback = Channel(
+            id = "live_fallback",
+            name = "专属直播（直连）",
+            groupTitle = "专属直播",
+            sources = listOf(StreamSource(url = "rtc://iptv_private")),
+            isRtc = true
+        )
+
+        val nextLive = buildList {
+            addAll(fetched)
+            if (!LiveChannelRegistry.isConfigured) add(fallback)
+        }
+
+        if (nextLive.isNotEmpty()) {
+            liveChannels = nextLive.distinctBy { it.id }
+        } else if (liveChannels.isEmpty()) {
+            liveChannels = listOf(fallback)
+        }
+        val regular = _channels.value.filter { !it.isRtc }
+        _channels.value = liveChannels + regular
     }
 
     suspend fun toggleFavorite(channel: Channel) {

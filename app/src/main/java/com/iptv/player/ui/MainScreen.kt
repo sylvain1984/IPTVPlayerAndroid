@@ -46,8 +46,10 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
     val channels            by vm.filteredChannels.collectAsStateWithLifecycle()
     val allChannels         by vm.allChannels.collectAsStateWithLifecycle()
     val allGroups           by vm.groups.collectAsStateWithLifecycle()
+    val subcategories       by vm.subcategories.collectAsStateWithLifecycle()
     val selectedId          by vm.selectedChannelId.collectAsStateWithLifecycle()
     val selectedGroup       by vm.selectedGroup.collectAsStateWithLifecycle()
+    val selectedSubcategory by vm.selectedSubcategory.collectAsStateWithLifecycle()
     val searchText          by vm.searchText.collectAsStateWithLifecycle()
     val favOnly             by vm.showOnlyFavorites.collectAsStateWithLifecycle()
     val isRefreshing        by vm.isRefreshing.collectAsStateWithLifecycle()
@@ -59,6 +61,7 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
     val recommendedChannels by vm.recommendedChannels.collectAsStateWithLifecycle()
     val showOnlyRecent      by vm.showOnlyRecent.collectAsStateWithLifecycle()
     val showRecommended     by vm.showRecommended.collectAsStateWithLifecycle()
+    val showExclusive       by vm.showExclusive.collectAsStateWithLifecycle()
 
     // userExitedFullscreen: set when user explicitly presses Back from fullscreen.
     // Resets automatically when a new channel is selected.
@@ -92,14 +95,16 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
         }
     }
 
-    val hasActiveFilter = searchText.isNotEmpty() || selectedGroup != null || favOnly ||
-        showOnlyRecent || showRecommended
+    val hasActiveFilter = searchText.isNotEmpty() || selectedGroup != null || selectedSubcategory != null || favOnly ||
+        showOnlyRecent || showRecommended || showExclusive
 
     // Back: exit fullscreen first, then clear filters
     BackHandler(enabled = isFullscreen || hasActiveFilter) {
         when {
             isFullscreen            -> userExitedFullscreen = true
             searchText.isNotEmpty() -> vm.setSearch("")
+            selectedSubcategory != null -> vm.setSubcategory(null)
+            showExclusive          -> vm.toggleExclusive()
             showOnlyRecent          -> vm.showRecent()
             showRecommended         -> vm.toggleRecommended()
             favOnly                 -> vm.toggleFavoritesFilter()
@@ -124,8 +129,10 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                                 channels              = channels,
                                 totalChannelCount     = allChannels.size,
                                 groups                = allGroups,
+                                subcategories         = subcategories,
                                 selectedChannelId     = selectedId,
                                 selectedGroup         = selectedGroup,
+                                selectedSubcategory   = selectedSubcategory,
                                 searchText            = searchText,
                                 showOnlyFavorites     = favOnly,
                                 isRefreshing          = isRefreshing,
@@ -134,14 +141,17 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                                 hasRecommended        = recommendedChannels.isNotEmpty(),
                                 showOnlyRecent        = showOnlyRecent,
                                 showRecommended       = showRecommended,
+                                showExclusive         = showExclusive,
                                 onSelectChannel       = { vm.selectChannel(it) },
                                 onToggleFavorite      = { vm.toggleFavorite(it) },
                                 onRefresh             = { vm.refresh() },
                                 onGroupSelected       = { vm.setGroup(it) },
+                                onSubcategorySelected = { vm.setSubcategory(it) },
                                 onSearchChanged       = { vm.setSearch(it) },
                                 onToggleFavoritesFilter = { vm.toggleFavoritesFilter() },
                                 onShowRecent          = { vm.showRecent() },
                                 onToggleRecommended   = { vm.toggleRecommended() },
+                                onToggleExclusive     = { vm.toggleExclusive() },
                                 modifier              = Modifier.fillMaxHeight().width(320.dp)
                             )
                             Box(
@@ -170,6 +180,8 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                     Box(modifier = Modifier.weight(1f)) {
                         PlayerPanel(
                             source              = activeSource,
+                            channel             = selectedChannel,
+                            rtcManager          = vm.rtcManager,
                             onTryFallbackSource  = { vm.trySwitchToNextSource() },
                             onRevalidateSources  = { vm.revalidateCurrentChannel() },
                             onErrorNoFallback    = { userExitedFullscreen = true },

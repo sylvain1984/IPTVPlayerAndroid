@@ -46,8 +46,10 @@ fun ChannelListPanel(
     channels: List<Channel>,
     totalChannelCount: Int,
     groups: List<String>,
+    subcategories: List<String>,
     selectedChannelId: String?,
     selectedGroup: String?,
+    selectedSubcategory: String?,
     searchText: String,
     showOnlyFavorites: Boolean,
     isRefreshing: Boolean,
@@ -56,14 +58,17 @@ fun ChannelListPanel(
     hasRecommended: Boolean,
     showOnlyRecent: Boolean = false,
     showRecommended: Boolean = false,
+    showExclusive: Boolean = false,
     onSelectChannel: (String) -> Unit,
     onToggleFavorite: (Channel) -> Unit,
     onRefresh: () -> Unit,
     onGroupSelected: (String?) -> Unit,
+    onSubcategorySelected: (String?) -> Unit,
     onSearchChanged: (String) -> Unit,
     onToggleFavoritesFilter: () -> Unit,
     onShowRecent: () -> Unit,
     onToggleRecommended: () -> Unit,
+    onToggleExclusive: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
@@ -83,8 +88,8 @@ fun ChannelListPanel(
     }
 
     // Derive favorites / rest split for the "全部" pinned-section layout
-    val isAllMode = !showOnlyFavorites && !showOnlyRecent && !showRecommended &&
-        selectedGroup == null && searchText.isEmpty()
+    val isAllMode = !showOnlyFavorites && !showOnlyRecent && !showRecommended && !showExclusive &&
+        selectedGroup == null && selectedSubcategory == null && searchText.isEmpty()
     val favChannels = if (isAllMode) channels.filter { it.isFavorite } else emptyList()
     val restChannels = if (isAllMode) channels.filter { !it.isFavorite } else channels
 
@@ -101,7 +106,7 @@ fun ChannelListPanel(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            val isFiltered = searchText.isNotEmpty() || selectedGroup != null ||
+            val isFiltered = searchText.isNotEmpty() || selectedGroup != null || selectedSubcategory != null ||
                 showOnlyFavorites
             val countLabel = when {
                 progress.isNotEmpty() -> progress
@@ -159,7 +164,20 @@ fun ChannelListPanel(
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // 收藏 tab — replaces the old toolbar star button
+                item {
+                    GroupChip(
+                        label = "全部",
+                        selected = !showOnlyFavorites && !showOnlyRecent && !showRecommended && !showExclusive && selectedGroup == null && selectedSubcategory == null,
+                        onClick = { onGroupSelected(null); onSubcategorySelected(null) }
+                    )
+                }
+                item {
+                    GroupChip(
+                        label = "专属",
+                        selected = showExclusive,
+                        onClick = onToggleExclusive
+                    )
+                }
                 val favCount = channels.count { it.isFavorite }
                 item {
                     GroupChip(
@@ -190,18 +208,24 @@ fun ChannelListPanel(
                         )
                     }
                 }
-                item {
-                    GroupChip(
-                        label    = "全部",
-                        selected = !showOnlyFavorites && !showOnlyRecent && !showRecommended && selectedGroup == null,
-                        onClick  = { onGroupSelected(null) }
-                    )
-                }
                 items(groups) { g ->
                     GroupChip(
                         label    = g,
-                        selected = !showOnlyFavorites && !showOnlyRecent && !showRecommended && selectedGroup == g,
-                        onClick  = { onGroupSelected(if (selectedGroup == g) null else g) }
+                        selected = !showOnlyFavorites && !showOnlyRecent && !showRecommended && !showExclusive && selectedGroup == g,
+                        onClick  = {
+                            onSubcategorySelected(null)
+                            onGroupSelected(if (selectedGroup == g) null else g)
+                        }
+                    )
+                }
+                items(subcategories) { tag ->
+                    GroupChip(
+                        label = "·$tag",
+                        selected = !showOnlyFavorites && !showOnlyRecent && !showRecommended && !showExclusive && selectedSubcategory == tag,
+                        onClick = {
+                            onGroupSelected(null)
+                            onSubcategorySelected(if (selectedSubcategory == tag) null else tag)
+                        }
                     )
                 }
             }
@@ -219,7 +243,7 @@ fun ChannelListPanel(
         if (channels.isEmpty() && !isRefreshing) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
-                    if (searchText.isNotEmpty() || selectedGroup != null || showOnlyFavorites)
+                    if (searchText.isNotEmpty() || selectedGroup != null || selectedSubcategory != null || showOnlyFavorites)
                         "无匹配结果" else "暂无频道，请点击刷新",
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
                     style = MaterialTheme.typography.bodyMedium

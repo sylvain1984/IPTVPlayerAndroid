@@ -2,26 +2,32 @@ package com.iptv.player.data
 
 object M3UParser {
 
-    private val NORMALIZED_GROUPS = listOf("体育", "国际", "娱乐", "新闻")
+    private val NORMALIZED_GROUPS = listOf("综合", "新闻", "体育", "影视", "儿童", "国际")
 
     private fun normalizeGroup(raw: String?): String {
-        val g = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return "娱乐"
+        val g = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return "综合"
         val lower = g.lowercase()
+
+        val news = listOf("新闻", "news", "资讯", "财经", "cctv-13", "cctv13",
+            "凤凰资讯", "cnn", "bbc", "时事")
+        if (news.any { lower.contains(it) }) return "新闻"
 
         val sports = listOf("体育", "sport", "足球", "篮球", "网球", "赛事", "运动",
             "football", "basketball", "tennis", "golf", "esport", "电竞", "奥运", "olympic")
         if (sports.any { lower.contains(it) }) return "体育"
 
-        val news = listOf("新闻", "news", "资讯", "财经", "cctv-13", "cctv13",
-            "凤凰资讯", "cnn", "bbc", "时事", "纪录")
-        if (news.any { lower.contains(it) }) return "新闻"
+        val movie = listOf("电影", "影院", "影视", "剧场", "电视剧", "综艺", "纪录", "music", "音乐")
+        if (movie.any { lower.contains(it) }) return "影视"
+
+        val kids = listOf("少儿", "卡通", "动漫", "儿童", "亲子", "动画", "kid")
+        if (kids.any { lower.contains(it) }) return "儿童"
 
         val intl = listOf("国际", "海外", "港", "澳", "台", "tvb", "hk", "tw",
             "international", "global", "world", "欧美", "日本", "韩国", "英国",
             "美国", "france", "germany", "japan", "korea", "uk", "us", "foreign", "境外")
         if (intl.any { lower.contains(it) }) return "国际"
 
-        return "娱乐"
+        return "综合"
     }
 
     fun parse(content: String): List<Channel> {
