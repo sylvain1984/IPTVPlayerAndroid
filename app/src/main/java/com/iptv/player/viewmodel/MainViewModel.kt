@@ -68,7 +68,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Sorted list of group names present in the full channel list */
     val groups: StateFlow<List<String>> =
         repository.channels
-            .map { chs -> chs.filter { !it.isRtc }.mapNotNull { it.groupTitle }.distinct().sorted() }
+            .map { chs ->
+                chs.filter { !it.isRtc }
+                    .mapNotNull { normalizeLabel(it.groupTitle) }
+                    .distinct()
+                    .sorted()
+            }
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private val subcategoryOrder = listOf("儿童", "地方", "港澳台", "纪录片", "动漫", "音乐", "赛事专区")
@@ -256,6 +261,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun refresh()         { viewModelScope.launch { repository.refresh(viewModelScope) } }
     fun clearAndRefresh() { viewModelScope.launch { repository.clearAndRefresh(viewModelScope) } }
     fun cancelValidation() { repository.cancelValidation() }
+
+    private fun normalizeLabel(value: String?): String? {
+        val trimmed = value?.trim().orEmpty()
+        if (trimmed.isEmpty()) return null
+        return if (trimmed.any { isCjk(it) || it.isLetterOrDigit() }) trimmed else null
+    }
+
+    private fun isCjk(ch: Char): Boolean {
+        val block = Character.UnicodeBlock.of(ch) ?: return false
+        return block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS ||
+            block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A ||
+            block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B ||
+            block == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS ||
+            block == Character.UnicodeBlock.CJK_SYMBOLS_AND_PUNCTUATION ||
+            block == Character.UnicodeBlock.HALFWIDTH_AND_FULLWIDTH_FORMS
+    }
 
     /** Called on playback error: re-validate all sources for the current channel.
      *  If the manually selected source turns out to be bad, reset to bestSource. */

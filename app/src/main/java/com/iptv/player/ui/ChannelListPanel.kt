@@ -9,7 +9,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -40,6 +39,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.iptv.player.data.Channel
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 
 @Composable
 fun ChannelListPanel(
@@ -158,12 +159,14 @@ fun ChannelListPanel(
             )
         }
 
-        // ── Filter tab strip ─────────────────────────────────────────────────
-        Box(modifier = Modifier.fillMaxWidth()) {
-            LazyRow(
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
+        // ── Filter tabs + visible category sections ──────────────────────────
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 item {
                     GroupChip(
                         label = "全部",
@@ -208,33 +211,37 @@ fun ChannelListPanel(
                         )
                     }
                 }
-                items(groups) { g ->
-                    GroupChip(
-                        label    = g,
-                        selected = !showOnlyFavorites && !showOnlyRecent && !showRecommended && !showExclusive && selectedGroup == g,
-                        onClick  = {
-                            onSubcategorySelected(null)
-                            onGroupSelected(if (selectedGroup == g) null else g)
-                        }
+            }
+
+            if (groups.isNotEmpty() || subcategories.isNotEmpty()) {
+                Text(
+                    "分类",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                )
+                if (groups.isNotEmpty()) {
+                    GroupChipFlow(
+                        chips = groups.map { g ->
+                            g to {
+                                onSubcategorySelected(null)
+                                onGroupSelected(if (selectedGroup == g) null else g)
+                            }
+                        },
+                        selected = { g -> !showOnlyFavorites && !showOnlyRecent && !showRecommended && !showExclusive && selectedGroup == g }
                     )
                 }
-                items(subcategories) { tag ->
-                    GroupChip(
-                        label = "·$tag",
-                        selected = !showOnlyFavorites && !showOnlyRecent && !showRecommended && !showExclusive && selectedSubcategory == tag,
-                        onClick = {
-                            onGroupSelected(null)
-                            onSubcategorySelected(if (selectedSubcategory == tag) null else tag)
-                        }
+                if (subcategories.isNotEmpty()) {
+                    GroupChipFlow(
+                        chips = subcategories.map { tag ->
+                            tag to {
+                                onGroupSelected(null)
+                                onSubcategorySelected(if (selectedSubcategory == tag) null else tag)
+                            }
+                        },
+                        selected = { tag -> !showOnlyFavorites && !showOnlyRecent && !showRecommended && !showExclusive && selectedSubcategory == tag }
                     )
                 }
             }
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .width(24.dp).height(36.dp)
-                    .background(Brush.horizontalGradient(listOf(Color.Transparent, MaterialTheme.colorScheme.surface)))
-            )
         }
 
         HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
@@ -493,6 +500,28 @@ private fun GroupChip(
             style = MaterialTheme.typography.labelMedium,
             color = if (selected) activeColor else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
         )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun GroupChipFlow(
+    chips: List<Pair<String, () -> Unit>>,
+    selected: (String) -> Boolean,
+    labelTransform: (String) -> String = { it }
+) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        chips.forEach { (label, onClick) ->
+            GroupChip(
+                label = labelTransform(label),
+                selected = selected(label),
+                onClick = onClick
+            )
+        }
     }
 }
 
