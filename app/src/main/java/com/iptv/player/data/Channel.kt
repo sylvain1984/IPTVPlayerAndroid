@@ -7,7 +7,8 @@ data class Channel(
     val groupTitle: String? = null,
     val sources: List<StreamSource> = emptyList(),
     val isFavorite: Boolean = false,
-    val isRtc: Boolean = false
+    val isRtc: Boolean = false,
+    val pinHash: String? = null
 ) {
     val rtcRoomId: String
         get() = sources.firstOrNull()?.url?.removePrefix("rtc://") ?: "iptv_private"

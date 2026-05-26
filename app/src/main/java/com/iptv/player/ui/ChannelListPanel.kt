@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -42,36 +43,70 @@ import com.iptv.player.data.Channel
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 
+data class ChannelListState(
+    val channels: List<Channel>,
+    val totalChannelCount: Int,
+    val groups: List<String>,
+    val subcategories: List<String>,
+    val selectedChannelId: String?,
+    val selectedGroup: String?,
+    val selectedSubcategory: String?,
+    val searchText: String,
+    val showOnlyFavorites: Boolean,
+    val isRefreshing: Boolean,
+    val progress: String,
+    val hasRecent: Boolean,
+    val hasRecommended: Boolean,
+    val showOnlyRecent: Boolean = false,
+    val showRecommended: Boolean = false,
+    val showExclusive: Boolean = false,
+)
+
+data class ChannelListCallbacks(
+    val onSelectChannel: (String) -> Unit,
+    val onToggleFavorite: (Channel) -> Unit,
+    val onRefresh: () -> Unit,
+    val onGroupSelected: (String?) -> Unit,
+    val onSubcategorySelected: (String?) -> Unit,
+    val onSearchChanged: (String) -> Unit,
+    val onToggleFavoritesFilter: () -> Unit,
+    val onShowRecent: () -> Unit,
+    val onToggleRecommended: () -> Unit,
+    val onToggleExclusive: () -> Unit,
+)
+
 @Composable
 fun ChannelListPanel(
-    channels: List<Channel>,
-    totalChannelCount: Int,
-    groups: List<String>,
-    subcategories: List<String>,
-    selectedChannelId: String?,
-    selectedGroup: String?,
-    selectedSubcategory: String?,
-    searchText: String,
-    showOnlyFavorites: Boolean,
-    isRefreshing: Boolean,
-    progress: String,
-    hasRecent: Boolean,
-    hasRecommended: Boolean,
-    showOnlyRecent: Boolean = false,
-    showRecommended: Boolean = false,
-    showExclusive: Boolean = false,
-    onSelectChannel: (String) -> Unit,
-    onToggleFavorite: (Channel) -> Unit,
-    onRefresh: () -> Unit,
-    onGroupSelected: (String?) -> Unit,
-    onSubcategorySelected: (String?) -> Unit,
-    onSearchChanged: (String) -> Unit,
-    onToggleFavoritesFilter: () -> Unit,
-    onShowRecent: () -> Unit,
-    onToggleRecommended: () -> Unit,
-    onToggleExclusive: () -> Unit,
+    state: ChannelListState,
+    callbacks: ChannelListCallbacks,
     modifier: Modifier = Modifier
 ) {
+    val channels = state.channels
+    val totalChannelCount = state.totalChannelCount
+    val groups = state.groups
+    val subcategories = state.subcategories
+    val selectedChannelId = state.selectedChannelId
+    val selectedGroup = state.selectedGroup
+    val selectedSubcategory = state.selectedSubcategory
+    val searchText = state.searchText
+    val showOnlyFavorites = state.showOnlyFavorites
+    val isRefreshing = state.isRefreshing
+    val progress = state.progress
+    val hasRecent = state.hasRecent
+    val hasRecommended = state.hasRecommended
+    val showOnlyRecent = state.showOnlyRecent
+    val showRecommended = state.showRecommended
+    val showExclusive = state.showExclusive
+    val onSelectChannel = callbacks.onSelectChannel
+    val onToggleFavorite = callbacks.onToggleFavorite
+    val onRefresh = callbacks.onRefresh
+    val onGroupSelected = callbacks.onGroupSelected
+    val onSubcategorySelected = callbacks.onSubcategorySelected
+    val onSearchChanged = callbacks.onSearchChanged
+    val onToggleFavoritesFilter = callbacks.onToggleFavoritesFilter
+    val onShowRecent = callbacks.onShowRecent
+    val onToggleRecommended = callbacks.onToggleRecommended
+    val onToggleExclusive = callbacks.onToggleExclusive
     val listState = rememberLazyListState()
     var searchExpanded by remember { mutableStateOf(false) }
     val searchFocusRequester = remember { FocusRequester() }

@@ -22,10 +22,9 @@ fun RtcPlayerView(channel: Channel, rtcManager: RtcManager, modifier: Modifier =
     val remoteUid by rtcManager.remoteUid.collectAsStateWithLifecycle()
     var texView   by remember { mutableStateOf<TextureView?>(null) }
 
-    LaunchedEffect(channel.id, channel.rtcRoomId)  { rtcManager.join(channel.rtcRoomId) }
+    LaunchedEffect(channel.id, channel.rtcRoomId) { rtcManager.join(channel.rtcRoomId) }
     DisposableEffect(Unit) { onDispose { rtcManager.leave() } }
 
-    // Bind remote video once both uid and TextureView are ready
     LaunchedEffect(remoteUid, texView) {
         val uid = remoteUid ?: return@LaunchedEffect
         val tv  = texView   ?: return@LaunchedEffect
@@ -61,11 +60,9 @@ fun RtcPlayerView(channel: Channel, rtcManager: RtcManager, modifier: Modifier =
                 color = Color.Red.copy(alpha = 0.85f),
                 modifier = Modifier.align(Alignment.TopStart).padding(12.dp)
             ) {
-                Text(
-                    "● 直播中", color = Color.White,
+                Text("● 直播中", color = Color.White,
                     style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                )
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
             }
         }
     }
