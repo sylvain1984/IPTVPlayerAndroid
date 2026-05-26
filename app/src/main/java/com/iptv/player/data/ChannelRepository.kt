@@ -141,13 +141,16 @@ private val _channels = MutableStateFlow<List<Channel>>(emptyList())
         _progress.value = "已加载 ${_channels.value.size} 个频道"
         save()
         _isRefreshing.value = false
-
-        validationJob = scope.launch { validateAllInBackground() }
     }
 
-    private suspend fun validateAllInBackground() {
+    private suspend fun validateAllInBackground(validateLimit: Int) {
         val chunkSize = 48
-        val list = _channels.value.toList()
+        val list = _channels.value.toList().take(validateLimit.coerceAtLeast(0))
+        if (list.isEmpty()) {
+            _progress.value = ""
+            save()
+            return
+        }
 
         for (start in list.indices step chunkSize) {
             if (validationJob?.isCancelled == true) break

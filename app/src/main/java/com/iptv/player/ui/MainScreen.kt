@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.iptv.player.data.Channel
+import com.iptv.player.data.LiveChannel
 import com.iptv.player.data.StreamSource
 import com.iptv.player.ui.theme.IPTVTheme
 import com.iptv.player.viewmodel.MainViewModel
@@ -67,6 +68,22 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
     // Resets automatically when a new channel is selected.
     var userExitedFullscreen by remember { mutableStateOf(false) }
     LaunchedEffect(selectedId) { userExitedFullscreen = false }
+
+    // PIN gate for exclusive live channels
+    var pinPendingChannelId by remember { mutableStateOf<String?>(null) }
+    var unlockedChannelIds  by remember { mutableStateOf(setOf<String>()) }
+    val allChs by vm.allChannels.collectAsStateWithLifecycle()
+
+    fun selectChannelWithPin(id: String) {
+        // 重新点同一个频道时也要强制回到全屏态
+        userExitedFullscreen = false
+        val ch = allChs.firstOrNull { it.id == id }
+        if (ch != null && ch.isRtc && ch.pinHash != null && id !in unlockedChannelIds) {
+            pinPendingChannelId = id
+        } else {
+            vm.selectChannel(id)
+        }
+    }
 
     // Derive isFullscreen directly — no coroutine delay, fires on the same frame as selection.
     val isFullscreen = selectedId != null && !userExitedFullscreen
@@ -126,33 +143,37 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                     if (sidebarWidth > 0.dp) {
                         Row(modifier = Modifier.width(321.dp).fillMaxHeight()) {
                             ChannelListPanel(
-                                channels              = channels,
-                                totalChannelCount     = allChannels.size,
-                                groups                = allGroups,
-                                subcategories         = subcategories,
-                                selectedChannelId     = selectedId,
-                                selectedGroup         = selectedGroup,
-                                selectedSubcategory   = selectedSubcategory,
-                                searchText            = searchText,
-                                showOnlyFavorites     = favOnly,
-                                isRefreshing          = isRefreshing,
-                                progress              = progress,
-                                hasRecent             = recentChannels.isNotEmpty(),
-                                hasRecommended        = recommendedChannels.isNotEmpty(),
-                                showOnlyRecent        = showOnlyRecent,
-                                showRecommended       = showRecommended,
-                                showExclusive         = showExclusive,
-                                onSelectChannel       = { vm.selectChannel(it) },
-                                onToggleFavorite      = { vm.toggleFavorite(it) },
-                                onRefresh             = { vm.refresh() },
-                                onGroupSelected       = { vm.setGroup(it) },
-                                onSubcategorySelected = { vm.setSubcategory(it) },
-                                onSearchChanged       = { vm.setSearch(it) },
-                                onToggleFavoritesFilter = { vm.toggleFavoritesFilter() },
-                                onShowRecent          = { vm.showRecent() },
-                                onToggleRecommended   = { vm.toggleRecommended() },
-                                onToggleExclusive     = { vm.toggleExclusive() },
-                                modifier              = Modifier.fillMaxHeight().width(320.dp)
+                                state = ChannelListState(
+                                    channels            = channels,
+                                    totalChannelCount   = allChannels.size,
+                                    groups              = allGroups,
+                                    subcategories       = subcategories,
+                                    selectedChannelId   = selectedId,
+                                    selectedGroup       = selectedGroup,
+                                    selectedSubcategory = selectedSubcategory,
+                                    searchText          = searchText,
+                                    showOnlyFavorites   = favOnly,
+                                    isRefreshing        = isRefreshing,
+                                    progress            = progress,
+                                    hasRecent           = recentChannels.isNotEmpty(),
+                                    hasRecommended      = recommendedChannels.isNotEmpty(),
+                                    showOnlyRecent      = showOnlyRecent,
+                                    showRecommended     = showRecommended,
+                                    showExclusive       = showExclusive,
+                                ),
+                                callbacks = ChannelListCallbacks(
+                                    onSelectChannel       = { selectChannelWithPin(it) },
+                                    onToggleFavorite      = { vm.toggleFavorite(it) },
+                                    onRefresh             = { vm.refresh() },
+                                    onGroupSelected       = { vm.setGroup(it) },
+                                    onSubcategorySelected = { vm.setSubcategory(it) },
+                                    onSearchChanged       = { vm.setSearch(it) },
+                                    onToggleFavoritesFilter = { vm.toggleFavoritesFilter() },
+                                    onShowRecent          = { vm.showRecent() },
+                                    onToggleRecommended   = { vm.toggleRecommended() },
+                                    onToggleExclusive     = { vm.toggleExclusive() },
+                                ),
+                                modifier = Modifier.fillMaxHeight().width(320.dp)
                             )
                             Box(
                                 modifier = Modifier
@@ -241,6 +262,25 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                     onAddUrl    = { vm.addRemoteSource(it) },
                     onAddPreset = { vm.addOptionalSourceGroup(it) }
                 )
+            }
+
+            // PIN entry dialog for protected exclusive channels
+            pinPendingChannelId?.let { pendingId ->
+                val pendingCh = allChs.firstOrNull { it.id == pendingId }
+                if (pendingCh != null) {
+                    PinEntryDialog(
+                        channelName = pendingCh.name,
+                        onVerify = { pin ->
+                            LiveChannel.hashPin(pin) == pendingCh.pinHash
+                        },
+                        onSuccess = {
+                            unlockedChannelIds = unlockedChannelIds + pendingId
+                            vm.selectChannel(pendingId)
+                            pinPendingChannelId = null
+                        },
+                        onDismiss = { pinPendingChannelId = null }
+                    )
+                }
             }
         }
     }
