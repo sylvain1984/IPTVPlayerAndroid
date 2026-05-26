@@ -35,7 +35,7 @@ class ChannelRepository(private val context: Context) {
         .connectionPool(ConnectionPool(64, 30, TimeUnit.SECONDS))
         .build()
 
-    private val aggregator = SourceAggregator(client)
+    private val aggregator = SourceAggregator(client, context)
     private val validator = StreamValidator(client)
     private val gson = Gson()
 
@@ -211,16 +211,16 @@ private val _channels = MutableStateFlow<List<Channel>>(emptyList())
             isRtc = true
         )
 
-        val nextLive = buildList {
-            addAll(fetched)
-            if (!LiveChannelRegistry.isConfigured) add(fallback)
+        liveChannels = when {
+            fetched.isNotEmpty() -> fetched.distinctBy { it.id }
+            LiveChannelRegistry.isConfigured -> emptyList()
+            else -> listOf(fallback)
         }
 
-        if (nextLive.isNotEmpty()) {
-            liveChannels = nextLive.distinctBy { it.id }
-        } else if (liveChannels.isEmpty()) {
+        if (liveChannels.isEmpty() && !LiveChannelRegistry.isConfigured) {
             liveChannels = listOf(fallback)
         }
+
         val regular = _channels.value.filter { !it.isRtc }
         _channels.value = liveChannels + regular
     }
