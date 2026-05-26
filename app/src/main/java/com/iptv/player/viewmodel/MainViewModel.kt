@@ -202,7 +202,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             while (isActive) {
                 repository.refreshLiveChannels()
-                kotlinx.coroutines.delay(30_000)
+                kotlinx.coroutines.delay(8_000)
             }
         }
     }
