@@ -2,6 +2,7 @@ package com.iptv.player.data
 
 import android.content.Context
 import android.view.TextureView
+import com.iptv.player.BuildConfig
 import com.ss.bytertc.engine.RTCRoom
 import com.ss.bytertc.engine.RTCRoomConfig
 import com.ss.bytertc.engine.RTCVideo
@@ -15,12 +16,15 @@ import com.ss.bytertc.engine.type.ChannelProfile
 import com.ss.bytertc.engine.type.MediaStreamType
 import com.ss.bytertc.engine.type.RTCRoomStats
 import com.ss.bytertc.engine.type.StreamRemoveReason
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-
-private const val APP_ID  = "6a13b1373d860b0617f988aa"
-private const val APP_KEY = "221fb57fe116497b9201c3c635f1b23c"
+import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
 
 enum class RtcState { IDLE, CONNECTING, LIVE, ERROR }
 
@@ -29,6 +33,8 @@ class RtcManager(private val context: Context) {
     private var rtcVideo:  RTCVideo? = null
     private var rtcRoom:   RTCRoom?  = null
     private var currentRoomId: String = ""
+    private val client = OkHttpClient()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val _state     = MutableStateFlow(RtcState.IDLE)
     val state: StateFlow<RtcState> = _state.asStateFlow()
@@ -40,23 +46,35 @@ class RtcManager(private val context: Context) {
         if (_state.value != RtcState.IDLE) return
         _state.value = RtcState.CONNECTING
         currentRoomId = roomId
-
-        if (rtcVideo == null) {
-            rtcVideo = RTCVideo.createRTCVideo(context, APP_ID, videoHandler, null, null)
+        val appId = BuildConfig.RTC_APP_ID
+        if (appId.isBlank() || BuildConfig.RTC_TOKEN_URL.isBlank()) {
+            _state.value = RtcState.ERROR
+            return
         }
-
         val userId = "viewer_android_${(1000..9999).random()}"
-        val token  = RTCTokenGenerator.generateViewerToken(APP_ID, APP_KEY, roomId, userId)
 
-        rtcRoom = rtcVideo!!.createRTCRoom(roomId).also {
-            it.setRTCRoomEventHandler(roomHandler)
+        scope.launch {
+            val credentials = try {
+                RTCTokenService.fetch(client, roomId, userId, "viewer")
+            } catch (_: Exception) {
+                _state.value = RtcState.ERROR
+                return@launch
+            }
+
+            if (rtcVideo == null) {
+                rtcVideo = RTCVideo.createRTCVideo(context, credentials.appId, videoHandler, null, null)
+            }
+
+            rtcRoom = rtcVideo!!.createRTCRoom(roomId).also {
+                it.setRTCRoomEventHandler(roomHandler)
+            }
+
+            val config = RTCRoomConfig(
+                ChannelProfile.CHANNEL_PROFILE_COMMUNICATION,
+                false, true, true
+            )
+            rtcRoom!!.joinRoom(credentials.token, UserInfo(userId, ""), config)
         }
-
-        val config = RTCRoomConfig(
-            ChannelProfile.CHANNEL_PROFILE_COMMUNICATION,
-            false, true, true
-        )
-        rtcRoom!!.joinRoom(token, UserInfo(userId, ""), config)
     }
 
     fun renderRemote(uid: String, textureView: TextureView) {
@@ -77,6 +95,7 @@ class RtcManager(private val context: Context) {
 
     fun release() {
         leave()
+        scope.cancel()
         RTCVideo.destroyRTCVideo()
         rtcVideo = null
     }

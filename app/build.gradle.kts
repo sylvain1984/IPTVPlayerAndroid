@@ -1,7 +1,23 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
+
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) {
+        file.inputStream().use(::load)
+    }
+}
+
+fun localProperty(name: String): String =
+    localProperties.getProperty(name)
+        ?: providers.environmentVariable(name).orNull
+        ?: ""
+
+val hasReleaseSigning = localProperty("ANDROID_SIGNING_STORE_FILE").isNotBlank()
 
 android {
     namespace = "com.iptv.player"
@@ -13,21 +29,30 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+
+        buildConfigField("String", "RTC_APP_ID", "\"${localProperty("RTC_APP_ID")}\"")
+        buildConfigField("String", "RTC_TOKEN_URL", "\"${localProperty("RTC_TOKEN_URL")}\"")
+        buildConfigField("String", "LIVE_REGISTRY_URL", "\"${localProperty("LIVE_REGISTRY_URL")}\"")
     }
 
     signingConfigs {
         create("release") {
-            storeFile = file("../iptv-release.jks")
-            storePassword = "iptv1234"
-            keyAlias = "iptv"
-            keyPassword = "iptv1234"
+            val signingStoreFile = localProperty("ANDROID_SIGNING_STORE_FILE")
+            if (signingStoreFile.isNotBlank()) {
+                storeFile = file(signingStoreFile)
+            }
+            storePassword = localProperty("ANDROID_SIGNING_STORE_PASSWORD")
+            keyAlias = localProperty("ANDROID_SIGNING_KEY_ALIAS")
+            keyPassword = localProperty("ANDROID_SIGNING_KEY_PASSWORD")
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
-            signingConfig = signingConfigs.getByName("release")
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -49,6 +74,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {

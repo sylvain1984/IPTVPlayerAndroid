@@ -1,12 +1,11 @@
 package com.iptv.player.data
 
+import com.iptv.player.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.security.MessageDigest
-
-private const val REGISTRY_URL = "https://iptv-75390-default-rtdb.firebaseio.com/live_channels"
 
 data class LiveChannel(
     val id: String,
@@ -41,7 +40,7 @@ data class LiveChannel(
 
 object LiveChannelRegistry {
     val isConfigured: Boolean
-        get() = true
+        get() = BuildConfig.LIVE_REGISTRY_URL.isNotBlank()
 
     private fun normalizeTimestamp(ts: Double): Double {
         // 兼容秒(10位)和毫秒(13位)时间戳
@@ -83,8 +82,9 @@ object LiveChannelRegistry {
 
     suspend fun fetchAll(client: OkHttpClient): List<LiveChannel> = withContext(Dispatchers.IO) {
         if (!isConfigured) return@withContext emptyList()
+        val registryUrl = BuildConfig.LIVE_REGISTRY_URL
         try {
-            val req = Request.Builder().url("$REGISTRY_URL.json").build()
+            val req = Request.Builder().url("$registryUrl.json").build()
             val body = client.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) return@withContext emptyList()
                 resp.body?.string() ?: return@withContext emptyList()

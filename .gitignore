@@ -21,6 +21,7 @@ captures/
 # Keystore (sensitive - do not commit)
 *.jks
 *.keystore
+keystore.properties
 
 # APK / AAB
 *.apk
