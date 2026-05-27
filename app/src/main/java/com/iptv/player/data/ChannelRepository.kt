@@ -141,6 +141,8 @@ private val _channels = MutableStateFlow<List<Channel>>(emptyList())
         _progress.value = "已加载 ${_channels.value.size} 个频道"
         save()
         _isRefreshing.value = false
+
+        validationJob = scope.launch { validateAllInBackground(_channels.value.size) }
     }
 
     private suspend fun validateAllInBackground(validateLimit: Int) {
@@ -162,8 +164,9 @@ private val _channels = MutableStateFlow<List<Channel>>(emptyList())
             }
 
             val current = _channels.value.toMutableList()
+            val indexMap = current.withIndex().associate { (i, ch) -> ch.id to i }
             for (ch in updated) {
-                val idx = current.indexOfFirst { it.id == ch.id }
+                val idx = indexMap[ch.id] ?: -1
                 if (idx >= 0) current[idx] = ch
             }
             _channels.value = current
