@@ -93,7 +93,7 @@ class SourceAggregator(
     }
 
     private fun gsonFromJson(text: String): List<String> {
-        val type = object : com.google.gson.reflect.TypeToken<List<String>>() {}.type
+        val type = com.google.gson.reflect.TypeToken.getParameterized(List::class.java, String::class.java).type
         return runCatching { com.google.gson.Gson().fromJson<List<String>>(text, type) ?: emptyList() }
             .getOrDefault(emptyList())
     }

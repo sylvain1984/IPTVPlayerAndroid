@@ -50,6 +50,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
+            isDebuggable = true
             if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
             }

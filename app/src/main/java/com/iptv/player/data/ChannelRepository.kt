@@ -66,13 +66,13 @@ private val _channels = MutableStateFlow<List<Channel>>(emptyList())
     suspend fun load() = withContext(Dispatchers.IO) {
         val prefs = context.dataStore.data.first()
         val json = prefs[KEY_CHANNELS] ?: return@withContext
-        val type = object : TypeToken<List<Channel>>() {}.type
+        val type = TypeToken.getParameterized(List::class.java, Channel::class.java).type
         val loaded: List<Channel> = gson.fromJson(json, type) ?: emptyList()
         _channels.value = liveChannels + loaded.filter { !it.isRtc }
         _lastRefreshMs.value = prefs[KEY_LAST_REFRESH]
         val historyJson = prefs[KEY_WATCH_HISTORY]
         if (historyJson != null) {
-            val histType = object : TypeToken<Map<String, WatchRecord>>() {}.type
+            val histType = TypeToken.getParameterized(Map::class.java, String::class.java, WatchRecord::class.java).type
             _watchHistory.value = gson.fromJson(historyJson, histType) ?: emptyMap()
         }
     }

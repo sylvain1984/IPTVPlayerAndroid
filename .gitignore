@@ -33,3 +33,7 @@ keystore.properties
 # Local screenshots / emulator artifacts
 emulator_preview.png
 META-INF/
+
+# Cloudflare Worker local dev files
+worker/.dev.vars
+worker/.wrangler/
