@@ -54,7 +54,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val selectedChannel: StateFlow<Channel?> =
         combine(repository.channels, _selectedChannelId) { chs, id ->
             id?.let { chs.firstOrNull { ch -> ch.id == it } }
-        }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+        }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     /** Best (or manually chosen) stream source for the selected channel */
     val activeSource: StateFlow<StreamSource?> =
@@ -68,6 +70,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Sorted list of group names present in the full channel list */
     val groups: StateFlow<List<String>> =
         repository.channels
+            // Only recompute when channel IDs change, not when source scores update during validation
+            .distinctUntilChanged { a, b -> a.map { it.id } == b.map { it.id } }
             .map { chs ->
                 chs.filter { !it.isRtc }
                     .mapNotNull { normalizeLabel(it.groupTitle) }
@@ -79,6 +83,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val subcategoryOrder = listOf("儿童", "地方", "港澳台", "纪录片", "动漫", "音乐", "赛事专区")
     val subcategories: StateFlow<List<String>> =
         repository.channels
+            .distinctUntilChanged { a, b -> a.map { it.id } == b.map { it.id } }
             .map { chs -> subcategoryOrder.filter { tag -> chs.any { !it.isRtc && matchesSubcategory(it, tag) } } }
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
@@ -98,7 +103,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * 3. Excludes the last 20 recently watched to keep suggestions fresh
      */
     val recommendedChannels: StateFlow<List<Channel>> =
-        combine(repository.channels, repository.watchHistory) { chs, history ->
+        combine(
+            repository.channels.debounce(300.milliseconds),
+            repository.watchHistory
+        ) { chs, history ->
             val recentIds = history.values
                 .sortedByDescending { it.lastWatchedMs }
                 .take(20)
@@ -192,14 +200,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     init {
         viewModelScope.launch {
             repository.load()
-            repository.refreshLiveChannels()
+            // Determine refresh need from cached state before any network call
             val needRefresh = repository.channels.value.isEmpty() ||
                 repository.lastRefreshMs.value.let { last ->
                     last == null || System.currentTimeMillis() - last > 24 * 3_600_000L
                 }
+            // Live channels and M3U refresh run in parallel
+            launch { repository.refreshLiveChannels() }
             if (needRefresh) repository.refresh(viewModelScope)
         }
         viewModelScope.launch {
+            // Start polling after a brief delay so startup network burst settles first
+            kotlinx.coroutines.delay(10_000)
             while (isActive) {
                 repository.refreshLiveChannels()
                 kotlinx.coroutines.delay(8_000)

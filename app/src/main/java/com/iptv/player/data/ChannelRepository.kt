@@ -147,12 +147,17 @@ private val _channels = MutableStateFlow<List<Channel>>(emptyList())
 
     private suspend fun validateAllInBackground(validateLimit: Int) {
         val chunkSize = 48
+        val updateEveryChunks = 3 // 每验证 3 批（~144 个频道）才刷新一次 UI，减少 recompose
         val list = _channels.value.toList().take(validateLimit.coerceAtLeast(0))
         if (list.isEmpty()) {
             _progress.value = ""
             save()
             return
         }
+
+        // 用 map 积累验证结果，批量写回 _channels.value
+        val pendingUpdates = mutableMapOf<String, com.iptv.player.data.Channel>()
+        var chunkIndex = 0
 
         for (start in list.indices step chunkSize) {
             if (validationJob?.isCancelled == true) break
@@ -162,15 +167,21 @@ private val _channels = MutableStateFlow<List<Channel>>(emptyList())
             val updated = coroutineScope {
                 chunk.map { ch -> async { validator.validateChannel(ch, limit = 1) } }.awaitAll()
             }
-
-            val current = _channels.value.toMutableList()
-            val indexMap = current.withIndex().associate { (i, ch) -> ch.id to i }
-            for (ch in updated) {
-                val idx = indexMap[ch.id] ?: -1
-                if (idx >= 0) current[idx] = ch
-            }
-            _channels.value = current
+            updated.forEach { pendingUpdates[it.id] = it }
+            chunkIndex++
             _progress.value = "验证中… $end / ${list.size}"
+
+            // 每 N 批或最后一批才写入，避免高频 recompose
+            if (chunkIndex % updateEveryChunks == 0 || end == list.size) {
+                val current = _channels.value.toMutableList()
+                val indexMap = current.withIndex().associate { (i, ch) -> ch.id to i }
+                for ((id, ch) in pendingUpdates) {
+                    val idx = indexMap[id] ?: -1
+                    if (idx >= 0) current[idx] = ch
+                }
+                _channels.value = current
+                pendingUpdates.clear()
+            }
         }
 
         if (validationJob?.isCancelled != true) {
