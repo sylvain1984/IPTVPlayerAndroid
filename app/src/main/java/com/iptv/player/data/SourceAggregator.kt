@@ -71,24 +71,21 @@ class SourceAggregator(
 
     private fun loadSourceCatalog(): List<String> {
         val ctx = context ?: return emptyList()
-        val candidates = buildList {
-            ctx.filesDir?.resolve("source_catalog.json")?.let { add(it) }
-            runCatching {
-                ctx.assets.open("source_catalog.json").bufferedReader().use { it.readText() }
-            }.getOrNull()?.let { add(it) }
-        }
 
-        for (candidate in candidates) {
-            val text = when (candidate) {
-                is java.io.File -> if (candidate.exists()) candidate.readText() else null
-                is String -> candidate
-                else -> null
-            } ?: continue
+        // Assets version is the authoritative default — always load it first
+        val assetUrls = runCatching {
+            ctx.assets.open("source_catalog.json").bufferedReader().use { it.readText() }
+        }.getOrNull()?.let { gsonFromJson(it) } ?: emptyList()
 
-            val urls = gsonFromJson(text)
-            if (urls.isNotEmpty()) return urls
-        }
-        return emptyList()
+        // filesDir version may contain user-added or server-pushed extra sources
+        val fileUrls = ctx.filesDir?.resolve("source_catalog.json")
+            ?.takeIf { it.exists() }
+            ?.let { gsonFromJson(it.readText()) }
+            ?: emptyList()
+
+        // Merge: assets as baseline + any extra URLs from filesDir not already present
+        val merged = (assetUrls + fileUrls).distinct()
+        return merged.ifEmpty { DEFAULT_SOURCES }
     }
 
     private fun gsonFromJson(text: String): List<String> {

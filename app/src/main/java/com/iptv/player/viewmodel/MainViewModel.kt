@@ -113,7 +113,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 .map { it.channelId }
                 .toSet()
 
-            val prioritized = prioritizedCctvChannels(chs)
+            val prioritized = prioritizedFeaturedChannels(chs)
 
             val interestGroups: Set<String> = chs
                 .filter { it.isFavorite || it.id in recentIds }
@@ -318,6 +318,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             urls.forEach { repository.addRemoteSource(it, viewModelScope) }
         }
+    }
+
+    private fun prioritizedFeaturedChannels(channels: List<Channel>): List<Channel> {
+        val cctv = prioritizedCctvChannels(channels)
+        // Include top Migu channels regardless of validation status
+        val migu = channels
+            .filter { ch ->
+                val name = ch.name
+                val group = ch.groupTitle ?: ""
+                name.contains("咪咕") || group.contains("咪咕")
+            }
+            .sortedWith(compareBy(
+                // 4K first, then numbered channels in order
+                { if (it.name.contains("4K") || it.name.contains("4k")) 0 else 1 },
+                { it.name }
+            ))
+            .take(6)
+        return (cctv + migu).distinctBy { it.id }
     }
 
     private fun prioritizedCctvChannels(channels: List<Channel>): List<Channel> {
