@@ -1,9 +1,8 @@
 [
-  "https://live.fanmingming.com/tv/m3u/ipv4.m3u",
+  "https://live.fanmingming.com/tv/m3u/itv.m3u",
   "https://live.fanmingming.com/tv/m3u/global.m3u",
   "https://raw.kgithub.com/YueChan/Live/main/IPTV.m3u",
   "https://raw.kgithub.com/YanG-1989/m3u/main/Gather.m3u",
   "https://raw.kgithub.com/joevess/IPTV/main/m3u/iptv.m3u",
-  "https://raw.kgithub.com/fanmingming/live/main/tv/m3u/ipv4.m3u",
-  "https://raw.kgithub.com/YueChan/Live/main/Migu.m3u"
+  "https://raw.kgithub.com/fanmingming/live/main/tv/m3u/index.m3u"
 ]

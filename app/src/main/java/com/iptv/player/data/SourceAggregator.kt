@@ -16,13 +16,12 @@ class SourceAggregator(
 
     companion object {
         val DEFAULT_SOURCES = listOf(
-            // CDN 直链，国内可访问
-            "https://live.fanmingming.com/tv/m3u/ipv4.m3u",
+            // itv.m3u 包含央视高清 + 咪咕，使用 cmvideo CDN（中国移动网络效果最佳）
+            "https://live.fanmingming.com/tv/m3u/itv.m3u",
             "https://live.fanmingming.com/tv/m3u/global.m3u",
             // kgithub.com = GitHub raw 国内镜像
             "https://raw.kgithub.com/YueChan/Live/main/IPTV.m3u",
-            "https://raw.kgithub.com/YanG-1989/m3u/main/Gather.m3u",
-            "https://raw.kgithub.com/joevess/IPTV/main/m3u/iptv.m3u",
+            "https://raw.kgithub.com/fanmingming/live/main/tv/m3u/index.m3u",
         )
 
         val OPTIONAL_SOURCES = mapOf(
