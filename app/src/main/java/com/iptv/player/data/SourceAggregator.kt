@@ -16,30 +16,30 @@ class SourceAggregator(
 
     companion object {
         val DEFAULT_SOURCES = listOf(
-            "https://raw.githubusercontent.com/fanmingming/live/main/tv/m3u/ipv4.m3u",
-            "https://iptv-org.github.io/iptv/countries/cn.m3u",
-            "https://raw.githubusercontent.com/YueChan/Live/main/IPTV.m3u",
-            "https://raw.githubusercontent.com/YanG-1989/m3u/main/Gather.m3u",
-            "https://raw.githubusercontent.com/joevess/IPTV/main/m3u/iptv.m3u",
-            "https://iptv-org.github.io/iptv/categories/sports.m3u",
+            // CDN 直链，国内可访问
+            "https://live.fanmingming.com/tv/m3u/ipv4.m3u",
+            "https://live.fanmingming.com/tv/m3u/global.m3u",
+            // kgithub.com = GitHub raw 国内镜像
+            "https://raw.kgithub.com/YueChan/Live/main/IPTV.m3u",
+            "https://raw.kgithub.com/YanG-1989/m3u/main/Gather.m3u",
+            "https://raw.kgithub.com/joevess/IPTV/main/m3u/iptv.m3u",
         )
 
         val OPTIONAL_SOURCES = mapOf(
             "咪咕" to listOf(
-                "https://raw.githubusercontent.com/YueChan/Live/main/Migu.m3u",
-                "https://raw.githubusercontent.com/YanG-1989/m3u/main/Migu.m3u",
+                "https://raw.kgithub.com/YueChan/Live/main/Migu.m3u",
+                "https://raw.kgithub.com/YanG-1989/m3u/main/Migu.m3u",
             ),
-            "海外体育" to listOf(
-                "https://raw.githubusercontent.com/iptv-org/iptv/master/streams/us_sports.m3u",
-                "https://raw.githubusercontent.com/iptv-org/iptv/master/streams/uk_sports.m3u",
+            "港澳台" to listOf(
+                "https://raw.kgithub.com/YueChan/Live/main/Gather.m3u",
             ),
             "中文聚合" to listOf(
-                "https://iptv-org.github.io/iptv/languages/zho.m3u",
                 "https://live.fanmingming.com/tv/m3u/global.m3u",
-                "https://raw.githubusercontent.com/joevess/IPTV/main/iptv-search.m3u",
+                "https://raw.kgithub.com/joevess/IPTV/main/iptv-search.m3u",
             ),
-            "国际精选" to listOf(
-                "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8",
+            "海外体育" to listOf(
+                "https://raw.kgithub.com/iptv-org/iptv/master/streams/us_sports.m3u",
+                "https://raw.kgithub.com/iptv-org/iptv/master/streams/uk_sports.m3u",
             ),
         )
     }
