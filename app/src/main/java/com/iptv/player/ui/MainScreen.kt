@@ -88,6 +88,22 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
     // Derive isFullscreen directly — no coroutine delay, fires on the same frame as selection.
     val isFullscreen = selectedId != null && !userExitedFullscreen
 
+    // Auto-switch to a newly-detected exclusive live broadcast and go fullscreen.
+    // Only reacts to genuinely new broadcast ids, so it won't yank the user back
+    // after they leave, and re-triggers when a fresh broadcast starts. PIN-protected
+    // broadcasts route through the PIN gate (selectChannelWithPin) before playing.
+    var autoSwitchedLiveIds by remember { mutableStateOf(setOf<String>()) }
+    val liveChannelIds = allChs.filter { it.isRtc }.map { it.id }
+    LaunchedEffect(liveChannelIds) {
+        val newLiveId = liveChannelIds.firstOrNull { it !in autoSwitchedLiveIds }
+        if (liveChannelIds.isNotEmpty()) {
+            autoSwitchedLiveIds = autoSwitchedLiveIds + liveChannelIds
+        }
+        if (newLiveId != null && newLiveId != selectedId) {
+            selectChannelWithPin(newLiveId)
+        }
+    }
+
     var showOverlay by remember { mutableStateOf(false) }
 
     // Animate the sidebar width: 320dp when visible, 0dp when fullscreen
