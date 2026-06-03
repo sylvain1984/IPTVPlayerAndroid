@@ -1,6 +1,7 @@
 package com.iptv.player.data
 
 import android.content.Context
+import android.util.Log
 import android.view.TextureView
 import com.iptv.player.BuildConfig
 import com.ss.bytertc.engine.RTCRoom
@@ -43,6 +44,7 @@ class RtcManager(private val context: Context) {
     val remoteUid: StateFlow<String?> = _remoteUid.asStateFlow()
 
     fun join(roomId: String) {
+        Log.d("RtcManager", "join: roomId=$roomId state=${_state.value}")
         if (_state.value != RtcState.IDLE) return
         _state.value = RtcState.CONNECTING
         currentRoomId = roomId
@@ -78,11 +80,10 @@ class RtcManager(private val context: Context) {
     }
 
     fun renderRemote(uid: String, textureView: TextureView) {
+        Log.d("RtcManager", "renderRemote: uid=$uid room=$currentRoomId tv=$textureView hasAvailableSurface=${textureView.isAvailable}")
         val streamKey = RemoteStreamKey(currentRoomId, uid, StreamIndex.STREAM_INDEX_MAIN)
-        rtcVideo?.setRemoteVideoCanvas(
-            streamKey,
-            VideoCanvas(textureView, VideoCanvas.RENDER_MODE_HIDDEN)
-        )
+        val result = rtcVideo?.setRemoteVideoCanvas(streamKey, VideoCanvas(textureView, VideoCanvas.RENDER_MODE_FIT))
+        Log.d("RtcManager", "setRemoteVideoCanvas result=$result")
     }
 
     fun leave() {
@@ -106,10 +107,12 @@ class RtcManager(private val context: Context) {
 
     private val roomHandler = object : IRTCRoomEventHandler() {
         override fun onRoomStateChanged(roomId: String, uid: String, state: Int, extraInfo: String) {
+            Log.d("RtcManager", "onRoomStateChanged: room=$roomId uid=$uid state=$state")
             if (state != 0) _state.value = RtcState.ERROR
         }
 
         override fun onUserPublishStream(uid: String, type: MediaStreamType) {
+            Log.d("RtcManager", "onUserPublishStream: uid=$uid type=$type")
             rtcRoom?.subscribeStream(uid, MediaStreamType.RTC_MEDIA_STREAM_TYPE_BOTH)
             _remoteUid.value = uid
             _state.value     = RtcState.LIVE

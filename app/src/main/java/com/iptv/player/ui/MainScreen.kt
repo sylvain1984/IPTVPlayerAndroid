@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.*
@@ -255,6 +256,40 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                                     .fillMaxWidth()
                                     .alpha(overlayAlpha)
                             )
+                        }
+
+                        // TV back button — always visible & focusable in fullscreen
+                        if (isFullscreen) {
+                            IconButton(
+                                onClick = { userExitedFullscreen = true },
+                                modifier = Modifier
+                                    .align(Alignment.TopStart)
+                                    .padding(8.dp)
+                                    .size(48.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.ArrowBack,
+                                    contentDescription = "返回频道列表",
+                                    tint = Color.White.copy(alpha = 0.85f)
+                                )
+                            }
+                        }
+
+                        // TV fullscreen button — visible when not fullscreen and a channel is selected
+                        if (!isFullscreen && selectedChannel != null) {
+                            IconButton(
+                                onClick = { userExitedFullscreen = false },
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(8.dp)
+                                    .size(48.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Fullscreen,
+                                    contentDescription = "进入全屏",
+                                    tint = Color.White.copy(alpha = 0.85f)
+                                )
+                            }
                         }
                     }
 

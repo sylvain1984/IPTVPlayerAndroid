@@ -1,5 +1,6 @@
 package com.iptv.player.ui
 
+import android.graphics.SurfaceTexture
 import android.view.TextureView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -20,12 +21,14 @@ import com.iptv.player.data.RtcState
 fun RtcPlayerView(channel: Channel, rtcManager: RtcManager, modifier: Modifier = Modifier) {
     val state     by rtcManager.state.collectAsStateWithLifecycle()
     val remoteUid by rtcManager.remoteUid.collectAsStateWithLifecycle()
-    var texView   by remember { mutableStateOf<TextureView?>(null) }
+    var texView        by remember { mutableStateOf<TextureView?>(null) }
+    var surfaceVersion by remember { mutableStateOf(0) }
 
     LaunchedEffect(channel.id, channel.rtcRoomId) { rtcManager.join(channel.rtcRoomId) }
     DisposableEffect(Unit) { onDispose { rtcManager.leave() } }
 
-    LaunchedEffect(remoteUid, texView) {
+    // Re-bind canvas whenever the remote stream arrives OR the surface is recreated
+    LaunchedEffect(remoteUid, surfaceVersion) {
         val uid = remoteUid ?: return@LaunchedEffect
         val tv  = texView   ?: return@LaunchedEffect
         rtcManager.renderRemote(uid, tv)
@@ -33,7 +36,19 @@ fun RtcPlayerView(channel: Channel, rtcManager: RtcManager, modifier: Modifier =
 
     Box(modifier = modifier.background(Color.Black), contentAlignment = Alignment.Center) {
         AndroidView(
-            factory = { ctx -> TextureView(ctx).also { texView = it } },
+            factory = { ctx ->
+                TextureView(ctx).also { tv ->
+                    texView = tv
+                    tv.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+                        override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
+                            surfaceVersion++
+                        }
+                        override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) {}
+                        override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean = true
+                        override fun onSurfaceTextureUpdated(st: SurfaceTexture) {}
+                    }
+                }
+            },
             modifier = Modifier.fillMaxSize()
         )
 

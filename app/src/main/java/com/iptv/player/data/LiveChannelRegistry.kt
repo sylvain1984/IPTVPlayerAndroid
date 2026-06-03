@@ -87,7 +87,7 @@ object LiveChannelRegistry {
             }
             val list: List<Map<*, *>> = gson.fromJson(body, listType) ?: return@withContext emptyList()
             val now    = System.currentTimeMillis() / 1000.0
-            val maxAge = 8 * 3600.0
+            val maxAge = 90.0
             list.mapNotNull { parseChannel(it) }
                 .filter { (now - it.startedAt) in 0.0..maxAge }
                 .sortedBy { it.startedAt }

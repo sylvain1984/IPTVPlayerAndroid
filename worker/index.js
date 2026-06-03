@@ -4,31 +4,30 @@
  * KV namespace: LIVE_CHANNELS  (bind in wrangler.toml)
  * Secret:       BROADCAST_SECRET  (set via `wrangler secret put BROADCAST_SECRET`)
  *
+ * Storage: single key "registry" → JSON array of channels
+ * This avoids KV list() calls (free tier: 1000/day limit).
+ *
  * Endpoints:
  *   GET  /live/channels          → list active channels (TV app calls this)
  *   PUT  /live/channel           → publish / heartbeat a channel (broadcaster)
  *   DELETE /live/channel/:id     → end broadcast (broadcaster)
  */
 
-const CHANNEL_TTL = 28800; // 8 hours — KV auto-expires stale entries
-const KV_PREFIX   = 'ch:';
+const REGISTRY_KEY = 'registry';
+const CHANNEL_TTL  = 90; // seconds — 11× heartbeat interval (8s); tolerates transient failures
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const { pathname, method } = { pathname: url.pathname, method: request.method };
 
-    // ── CORS preflight ──────────────────────────────────────────────────────
     if (method === 'OPTIONS') {
       return new Response(null, { headers: corsHeaders() });
     }
 
     // ── GET /live/channels ──────────────────────────────────────────────────
     if (pathname === '/live/channels' && method === 'GET') {
-      const list = await env.LIVE_CHANNELS.list({ prefix: KV_PREFIX });
-      const channels = (
-        await Promise.all(list.keys.map(k => env.LIVE_CHANNELS.get(k.name, { type: 'json' })))
-      ).filter(Boolean);
+      const channels = await readRegistry(env);
       return json(channels);
     }
 
@@ -40,19 +39,20 @@ export default {
       let body;
       try { body = await request.json(); } catch { return err('Invalid JSON', 400); }
 
-      const id      = body.id || crypto.randomUUID();
+      const id = body.id || crypto.randomUUID();
       const channel = {
         id,
-        name:      body.name     || '专属直播',
-        roomId:    body.roomId   || 'iptv_private',
-        pinHash:   body.pinHash  ?? null,
-        hostId:    body.hostId   ?? null,
-        startedAt: Date.now() / 1000,   // always refresh timestamp on heartbeat
+        name:      body.name    || '专属直播',
+        roomId:    body.roomId  || 'iptv_private',
+        pinHash:   body.pinHash ?? null,
+        hostId:    body.hostId  ?? null,
+        startedAt: Date.now() / 1000,
       };
 
-      await env.LIVE_CHANNELS.put(`${KV_PREFIX}${id}`, JSON.stringify(channel), {
-        expirationTtl: CHANNEL_TTL,
-      });
+      const channels = await readRegistry(env);
+      const updated  = channels.filter(c => c.id !== id);
+      updated.push(channel);
+      await writeRegistry(env, updated);
       return json({ id });
     }
 
@@ -63,7 +63,9 @@ export default {
 
       const id = pathname.slice('/live/channel/'.length).trim();
       if (!id) return err('Missing channel id', 400);
-      await env.LIVE_CHANNELS.delete(`${KV_PREFIX}${id}`);
+
+      const channels = await readRegistry(env);
+      await writeRegistry(env, channels.filter(c => c.id !== id));
       return new Response('OK', { headers: corsHeaders() });
     }
 
@@ -71,7 +73,20 @@ export default {
   },
 };
 
-// ── helpers ─────────────────────────────────────────────────────────────────
+// ── KV helpers ───────────────────────────────────────────────────────────────
+
+async function readRegistry(env) {
+  const raw = await env.LIVE_CHANNELS.get(REGISTRY_KEY, { type: 'json' });
+  if (!Array.isArray(raw)) return [];
+  const cutoff = Date.now() / 1000 - CHANNEL_TTL;
+  return raw.filter(c => c.startedAt > cutoff);
+}
+
+async function writeRegistry(env, channels) {
+  await env.LIVE_CHANNELS.put(REGISTRY_KEY, JSON.stringify(channels));
+}
+
+// ── helpers ──────────────────────────────────────────────────────────────────
 
 function checkAuth(request, env) {
   const secret = env.BROADCAST_SECRET;
