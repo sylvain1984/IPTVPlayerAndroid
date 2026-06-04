@@ -116,6 +116,7 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                 delay(1_000)
                 if (vm.rtcManager.state.value == RtcState.CONNECTING) {
                     userExitedFullscreen = true
+                    vm.selectChannel(null)  // 回到欢迎页
                 }
             }
             else -> {}
