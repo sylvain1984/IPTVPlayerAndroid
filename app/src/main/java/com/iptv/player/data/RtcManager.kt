@@ -3,7 +3,6 @@ package com.iptv.player.data
 import android.content.Context
 import android.util.Log
 import android.view.TextureView
-import com.iptv.player.BuildConfig
 import com.ss.bytertc.engine.RTCRoom
 import com.ss.bytertc.engine.RTCRoomConfig
 import com.ss.bytertc.engine.RTCVideo
@@ -25,7 +24,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import okhttp3.OkHttpClient
 
 enum class RtcState { IDLE, CONNECTING, LIVE, ERROR }
 
@@ -34,7 +32,6 @@ class RtcManager(private val context: Context) {
     private var rtcVideo:  RTCVideo? = null
     private var rtcRoom:   RTCRoom?  = null
     private var currentRoomId: String = ""
-    private val client = OkHttpClient()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val _state     = MutableStateFlow(RtcState.IDLE)
@@ -48,21 +45,10 @@ class RtcManager(private val context: Context) {
         if (_state.value != RtcState.IDLE) return
         _state.value = RtcState.CONNECTING
         currentRoomId = roomId
-        val appId = BuildConfig.RTC_APP_ID
-        if (appId.isBlank() || BuildConfig.RTC_TOKEN_URL.isBlank()) {
-            _state.value = RtcState.ERROR
-            return
-        }
         val userId = "viewer_android_${(1000..9999).random()}"
+        val credentials = RTCTokenGenerator.generate(roomId, userId)
 
         scope.launch {
-            val credentials = try {
-                RTCTokenService.fetch(client, roomId, userId, "viewer")
-            } catch (_: Exception) {
-                _state.value = RtcState.ERROR
-                return@launch
-            }
-
             if (rtcVideo == null) {
                 rtcVideo = RTCVideo.createRTCVideo(context, credentials.appId, videoHandler, null, null)
             }

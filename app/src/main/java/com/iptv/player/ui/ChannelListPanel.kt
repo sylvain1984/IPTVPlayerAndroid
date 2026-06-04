@@ -209,13 +209,6 @@ fun ChannelListPanel(
                         onClick = { onGroupSelected(null); onSubcategorySelected(null) }
                     )
                 }
-                item {
-                    GroupChip(
-                        label = "专属",
-                        selected = showExclusive,
-                        onClick = onToggleExclusive
-                    )
-                }
                 val favCount = channels.count { it.isFavorite }
                 item {
                     GroupChip(

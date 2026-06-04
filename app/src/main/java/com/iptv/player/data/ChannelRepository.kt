@@ -228,15 +228,7 @@ private val _channels = MutableStateFlow<List<Channel>>(emptyList())
             isRtc = true
         )
 
-        liveChannels = when {
-            fetched.isNotEmpty() -> fetched.distinctBy { it.id }
-            LiveChannelRegistry.isConfigured -> emptyList()
-            else -> listOf(fallback)
-        }
-
-        if (liveChannels.isEmpty() && !LiveChannelRegistry.isConfigured) {
-            liveChannels = listOf(fallback)
-        }
+        liveChannels = if (fetched.isNotEmpty()) fetched.distinctBy { it.id } else listOf(fallback)
 
         val regular = _channels.value.filter { !it.isRtc }
         _channels.value = liveChannels + regular

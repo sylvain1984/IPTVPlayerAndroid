@@ -1,6 +1,7 @@
 package com.iptv.player.ui
 
 import androidx.activity.compose.BackHandler
+import com.iptv.player.data.RtcState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -93,15 +94,31 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
     // Only reacts to genuinely new broadcast ids, so it won't yank the user back
     // after they leave, and re-triggers when a fresh broadcast starts. PIN-protected
     // broadcasts route through the PIN gate (selectChannelWithPin) before playing.
+    // 初次出现专属直播频道时选中（使 RtcPlayerView 可见），此后由 rtcState 驱动全屏
     var autoSwitchedLiveIds by remember { mutableStateOf(setOf<String>()) }
     val liveChannelIds = allChs.filter { it.isRtc }.map { it.id }
     LaunchedEffect(liveChannelIds) {
         val newLiveId = liveChannelIds.firstOrNull { it !in autoSwitchedLiveIds }
-        if (liveChannelIds.isNotEmpty()) {
-            autoSwitchedLiveIds = autoSwitchedLiveIds + liveChannelIds
-        }
-        if (newLiveId != null && newLiveId != selectedId) {
-            selectChannelWithPin(newLiveId)
+        if (liveChannelIds.isNotEmpty()) autoSwitchedLiveIds = autoSwitchedLiveIds + liveChannelIds
+        if (newLiveId != null && newLiveId != selectedId) selectChannelWithPin(newLiveId)
+    }
+
+    // RTC 状态驱动全屏：开播自动全屏，停播 1 秒后退出
+    val rtcState by vm.rtcManager.state.collectAsStateWithLifecycle()
+    LaunchedEffect(rtcState) {
+        when (rtcState) {
+            RtcState.LIVE -> {
+                val liveId = allChs.firstOrNull { it.isRtc }?.id ?: return@LaunchedEffect
+                userExitedFullscreen = false
+                if (selectedId != liveId) vm.selectChannel(liveId)
+            }
+            RtcState.CONNECTING -> {
+                delay(1_000)
+                if (vm.rtcManager.state.value == RtcState.CONNECTING) {
+                    userExitedFullscreen = true
+                }
+            }
+            else -> {}
         }
     }
 

@@ -113,21 +113,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 .map { it.channelId }
                 .toSet()
 
-            val prioritized = prioritizedFeaturedChannels(chs)
-
             val interestGroups: Set<String> = chs
                 .filter { it.isFavorite || it.id in recentIds }
                 .mapNotNull { it.groupTitle }
                 .toSet()
 
-            val scored = chs
+            chs
                 .filter { it.id !in recentIds }
-                .filter { isUsableChannelStrict(it) || isPriorityCctv(it) }
-                // Skip channels confirmed bad by validation (best source checked but score < 0.5)
-                .filter { ch ->
-                    val best = ch.bestSource
-                    best?.lastCheckedMs == null || best.score >= 0.5
-                }
+                .filter { isUsableChannelStrict(it) }   // 只推已验证可用的流
                 .map { ch ->
                     val watchCount = history[ch.id]?.watchCount ?: 0
                     val score =
@@ -141,8 +134,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 .sortedByDescending { it.second }
                 .take(20)
                 .map { it.first }
-
-            (prioritized + scored).distinctBy { it.id }.take(20)
         }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /** Channels after applying search / group / favorites / recent filters */
@@ -207,6 +198,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             // Live channels and M3U refresh run in parallel
             launch { repository.refreshLiveChannels() }
+            launch { rtcManager.join("iptv_private") }  // 启动即加入，持续检测推流
             if (needRefresh) repository.refresh(viewModelScope)
         }
         viewModelScope.launch {

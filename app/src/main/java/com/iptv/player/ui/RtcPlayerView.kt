@@ -24,8 +24,8 @@ fun RtcPlayerView(channel: Channel, rtcManager: RtcManager, modifier: Modifier =
     var texView        by remember { mutableStateOf<TextureView?>(null) }
     var surfaceVersion by remember { mutableStateOf(0) }
 
+    // join() is a no-op if already connected (manager started at app launch)
     LaunchedEffect(channel.id, channel.rtcRoomId) { rtcManager.join(channel.rtcRoomId) }
-    DisposableEffect(Unit) { onDispose { rtcManager.leave() } }
 
     // Re-bind canvas whenever the remote stream arrives OR the surface is recreated
     LaunchedEffect(remoteUid, surfaceVersion) {
