@@ -241,33 +241,36 @@ fun ChannelListPanel(
                 }
             }
 
-            if (groups.isNotEmpty() || subcategories.isNotEmpty()) {
-                Text(
-                    "分类",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                )
+            // 仅「全部」模式下显示分类，与 macOS 一致
+            val showCategories = !showOnlyFavorites && !showOnlyRecent && !showRecommended
+            if (showCategories && (groups.isNotEmpty() || subcategories.isNotEmpty())) {
                 if (groups.isNotEmpty()) {
-                    GroupChipFlow(
-                        chips = groups.map { g ->
-                            g to {
-                                onSubcategorySelected(null)
-                                onGroupSelected(if (selectedGroup == g) null else g)
-                            }
-                        },
-                        selected = { g -> !showOnlyFavorites && !showOnlyRecent && !showRecommended && !showExclusive && selectedGroup == g }
-                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(groups) { g ->
+                            GroupChip(
+                                label = g,
+                                selected = !showOnlyFavorites && !showOnlyRecent && !showRecommended && selectedGroup == g,
+                                onClick = {
+                                    onSubcategorySelected(null)
+                                    onGroupSelected(if (selectedGroup == g) null else g)
+                                }
+                            )
+                        }
+                    }
                 }
                 if (subcategories.isNotEmpty()) {
-                    GroupChipFlow(
-                        chips = subcategories.map { tag ->
-                            tag to {
-                                onGroupSelected(null)
-                                onSubcategorySelected(if (selectedSubcategory == tag) null else tag)
-                            }
-                        },
-                        selected = { tag -> !showOnlyFavorites && !showOnlyRecent && !showRecommended && !showExclusive && selectedSubcategory == tag }
-                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(subcategories) { tag ->
+                            GroupChip(
+                                label = tag,
+                                selected = !showOnlyFavorites && !showOnlyRecent && !showRecommended && selectedSubcategory == tag,
+                                onClick = {
+                                    onGroupSelected(null)
+                                    onSubcategorySelected(if (selectedSubcategory == tag) null else tag)
+                                }
+                            )
+                        }
+                    }
                 }
             }
         }

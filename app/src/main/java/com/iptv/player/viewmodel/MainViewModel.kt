@@ -82,10 +82,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val subcategoryOrder = listOf("儿童", "地方", "港澳台", "纪录片", "动漫", "音乐", "赛事专区")
     val subcategories: StateFlow<List<String>> =
-        repository.channels
-            .distinctUntilChanged { a, b -> a.map { it.id } == b.map { it.id } }
-            .map { chs -> subcategoryOrder.filter { tag -> chs.any { !it.isRtc && matchesSubcategory(it, tag) } } }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+        combine(
+            repository.channels.distinctUntilChanged { a, b -> a.map { it.id } == b.map { it.id } },
+            groups
+        ) { chs, grps ->
+            subcategoryOrder.filter { tag ->
+                !grps.contains(tag) &&  // 已有同名 group，不重复显示
+                chs.any { !it.isRtc && matchesSubcategory(it, tag) }
+            }
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /** Last 20 watched channels, most recent first */
     val recentChannels: StateFlow<List<Channel>> =
